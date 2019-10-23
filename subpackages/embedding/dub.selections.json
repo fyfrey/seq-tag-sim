@@ -1,0 +1,15 @@
+{
+	"fileVersion": 1,
+	"versions": {
+		"asdf": "0.5.0",
+		"cblas": "2.0.3",
+		"mir": "3.2.0",
+		"mir-algorithm": "3.5.0",
+		"mir-blas": "1.1.8",
+		"mir-core": "0.3.5",
+		"mir-linux-kernel": "1.0.1",
+		"mir-random": "2.2.5",
+		"zeromq": "4.2.2",
+		"zmqd": "1.1.1"
+	}
+}

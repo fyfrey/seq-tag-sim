@@ -1,0 +1,156 @@
+{
+	"name": "seq-tag-sim",
+	"authors": [
+		"Fynn Schröder"
+	],
+	"copyright": "Copyright © 2019, Fynn Schröder",
+	"description": "Tool to compute the similarity of sequence tagging datasets",
+	"license": "MIT",
+	"mainSourceFile": "source/app.d",
+	"targetType": "executable",
+	"subPackages": [
+		"./subpackages/blas/",
+		"./subpackages/cuda/",
+		"./subpackages/embedding/",
+		"./subpackages/reader/",
+		"./subpackages/fasttext/",
+		"./subpackages/util/"
+	],
+	"dependencies": {
+		":reader": "*",
+		":util": "*",
+		"cachetools": "~>0.3.1",
+		"mir": "~>3.2.0",
+		"mir-algorithm": "~>3.4.19",
+		"silly": "~>0.8.2"
+	},
+	"dflags": [
+		"-preview=dip25",
+		"-preview=dip1000",
+		"-preview=dip1008"
+	],
+	"dflags-ldc": [
+		"-mcpu=native"
+	],
+	"buildTypes": {
+		"lto": {
+			"buildOptions": [
+				"releaseMode",
+				"inline",
+				"optimize"
+			],
+			"dflags-ldc": [
+				"-flto=full",
+				"-defaultlib=phobos2-ldc-lto,druntime-ldc-lto"
+			]
+		},
+		"pgo": {
+			"buildOptions": [
+				"releaseMode",
+				"inline",
+				"optimize"
+			],
+			"dflags-ldc": [
+				"-flto=full",
+				"-defaultlib=phobos2-ldc-lto,druntime-ldc-lto",
+				"-fprofile-use=profile.data"
+			]
+		},
+		"pgo-gen": {
+			"buildOptions": [
+				"releaseMode",
+				"inline",
+				"optimize"
+			],
+			"dflags-ldc": [
+				"-flto=full",
+				"-defaultlib=phobos2-ldc-lto,druntime-ldc-lto",
+				"-fprofile-generate=profile.raw"
+			]
+		}
+	},
+	"configurations": [
+		{
+			"name": "default"
+		},
+		{
+			"name": "cuda",
+			"dependencies": {
+				":cuda": "*",
+				":embedding": "*"
+			}
+		},
+		{
+			"name": "cuda-static",
+			"dependencies": {
+				":cuda": "*",
+				":embedding": "*"
+			},
+			"subConfigurations":{
+				"seq-tag-sim:cuda": "static",
+				"seq-tag-sim:embedding": "static-manual"
+			}
+		},
+		{
+			"name": "blas-static",
+			"dependencies": {
+				":blas": "*",
+				":embedding": "*"
+			},
+			"subConfigurations":{
+				"seq-tag-sim:blas": "mkl-static",
+				"seq-tag-sim:embedding": "static-manual"
+			}
+		},
+		{
+			"name": "blas",
+			"dependencies": {
+				":blas": "*",
+				":embedding": "*"
+			},
+			"subConfigurations":{
+				"seq-tag-sim:blas": "mkl"
+			}
+		},
+		{
+			"name": "embedding",
+			"dependencies": {
+				":embedding": "*"
+			}
+		},
+		{
+			"name": "embedding-static",
+			"dependencies": {
+				":embedding": "*"
+			},
+			"subConfigurations":{
+				"seq-tag-sim:embedding": "static-manual"
+			}
+		},
+		{
+			"name": "complete",
+			"dependencies": {
+				":cuda": "*",
+				":blas": "*",
+				":embedding": "*",
+				"pyd": "~>0.12.0"
+			},
+			"subConfigurations": {
+				"seq-tag-sim:embedding": "static-manual",
+				"seq-tag-sim:cuda": "static",
+				"seq-tag-sim:blas": "mkl-static",
+				"seq-tag-sim:reader": "more",
+				"pyd": "python37"
+			},
+			"lflags-posix": [
+				"-L/usr/lib"
+			],
+			"lflags-windows": [
+				"-L$PYTHONHOME/libs"
+			],
+			"versions":[
+				"python"
+			]
+		}
+	]
+}

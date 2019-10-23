@@ -1,0 +1,16 @@
+name "fasttext"
+description "D wrapper for fastText library"
+authors "Fynn Schröder"
+copyright "Copyright © 2019, Fynn Schröder"
+license "MIT"
+versions "fasttext"
+targetType "sourceLibrary"
+libs "stdc++"
+dependency "mir-algorithm" version="*"
+configuration "default" {
+    preBuildCommands "[ -f $PACKAGE_DIR/lib/libfasttext.a ] || { cd $PACKAGE_DIR/lib && make -f fasttext.make static; }" platform="posix"
+    sourceFiles "$PACKAGE_DIR/lib/libfasttext.a"
+}
+configuration "lto" {
+    sourceFiles "$PACKAGE_DIR/lib/libfasttext-lto.a"
+}

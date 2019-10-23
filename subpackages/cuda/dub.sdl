@@ -1,0 +1,22 @@
+name "cuda"
+description "CUDA functions for vector similarity"
+authors "Fynn Schröder"
+copyright "Copyright © 2019, Fynn Schröder"
+license "MIT"
+versions "cuda"
+targetType "sourceLibrary"
+dependency "mir-algorithm" version="*"
+dependency "mir" version="*"
+dependency "mir-random" version="*"
+lflags "-L/usr/local/cuda/lib64" platform="posix"
+lflags "/LIBPATH:C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v10.1/lib/x64" platform="windows"
+preBuildCommands "[ -f $PACKAGE_DIR/kernel.a ] || nvcc -O3 -lib -o $PACKAGE_DIR/kernel.a $PACKAGE_DIR/source/seqtagsim/cuda/kernel.cu" platform="posix"
+preBuildCommands "nvcc -O3 -lib -o $PACKAGE_DIR/kernel.lib $PACKAGE_DIR/source/seqtagsim/cuda/kernel.cu" platform="windows"
+sourceFiles "$PACKAGE_DIR/kernel.a" platform="posix"
+sourceFiles "$PACKAGE_DIR/kernel.lib" platform="windows"
+configuration "default" {
+    libs "cudart" "cublas" "stdc++"
+}
+configuration "static" {
+    libs "cublas_static" "cublasLt_static" "culibos" "cudart_static" "stdc++"
+}

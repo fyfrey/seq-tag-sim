@@ -1,0 +1,29 @@
+name "blas"
+description "BLAS-accelerated word embedding similarity"
+authors "Fynn Schröder"
+copyright "Copyright © 2019, Fynn Schröder"
+license "MIT"
+dependency "mir-algorithm" version="*"
+dependency "mir-random" version="*"
+dependency "mir-blas" version="~>1.1.8"
+versions "blas"
+configuration "default" {
+    subConfiguration "mir-blas" "twolib"
+    versions "OPENBLAS"
+}
+configuration "openblas-static" {
+    subConfiguration "mir-blas" "openblas"
+    lflags "-L$PACKAGE_DIR/lib/static" platform="posix"
+}
+configuration "mkl" {
+    subConfiguration "mir-blas" "zerolib"
+    versions "INTEL_MKL"
+    libs "mkl_intel_lp64" "mkl_intel_thread" "mkl_core" "iomp5" "pthread" "m" "dl" platform="x86_64"
+}
+
+configuration "mkl-static" {
+    subConfiguration "mir-blas" "zerolib"
+    versions "INTEL_MKL"
+    libs "pthread" "m" "dl"
+    lflags "-l:libmkl_intel_lp64.a" "-l:libmkl_intel_thread.a" "-l:libmkl_core.a" "-l:libiomp5.a" platform="x86_64"
+}

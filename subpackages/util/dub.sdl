@@ -1,0 +1,6 @@
+name "util"
+description "Utility functions"
+authors "Fynn Schröder"
+copyright "Copyright © 2019, Fynn Schröder"
+license "MIT"
+configuration "default"

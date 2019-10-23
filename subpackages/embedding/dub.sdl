@@ -1,0 +1,20 @@
+name "embedding"
+description "D Wrapper for word embedding libraries"
+authors "Fynn Schröder"
+copyright "Copyright © 2019, Fynn Schröder"
+license "MIT"
+targetType "sourceLibrary"
+dependency "seq-tag-sim:util" version="*"
+dependency "mir" version="*"
+dependency "mir-algorithm" version="*"
+configuration "default"
+dependency "zmqd" version="~>1.1.1"
+dependency "asdf" version="*"
+dependency "seq-tag-sim:fasttext" version="*" optional=true
+versions "embedding"
+configuration "static-manual" {
+    lflags "-L$PACKAGE_DIR/lib/static" "-l:libzmqlocal.a" platform="posix"
+}
+configuration "static" {
+    lflags "-l:libzmq.a" "-l:libpgm.a" platform="posix"
+}
