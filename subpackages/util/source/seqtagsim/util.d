@@ -41,8 +41,11 @@ auto listFiles(string start, string pattern = null)
 struct OutputBuffer(T, Allocator)
 {
     import std.experimental.allocator : makeArray, expandArray, dispose, stateSize, shrinkArray;
+    import std.algorithm.mutation : copy;
 
     @disable this(this);
+
+    alias data this;
 
     static if (stateSize!Allocator != 0)
     {
@@ -85,6 +88,13 @@ struct OutputBuffer(T, Allocator)
         shrinkArray(alloc, buf, buf.length - len);
     }
 
+    void remove(size_t from, size_t to)
+    {
+        immutable newLen = len - (to - from);
+        copy(buf[to .. len], buf[from .. newLen]);
+        len = newLen;
+    }
+
     size_t length()
     {
         return len;
@@ -114,6 +124,8 @@ unittest
     string dummyData = "00112233445566778899";
     put(o, dummyData);
     assert(dummyData == o.data);
+    o.remove(8,10);
+    assert(o.data == "001122335566778899");
 }
 
 unittest

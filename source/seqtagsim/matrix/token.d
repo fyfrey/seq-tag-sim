@@ -18,10 +18,13 @@ import std.experimental.allocator;
 import std.experimental.allocator.showcase;
 import std.experimental.allocator.mallocator;
 
+import core.memory;
+
 import cachetools.containers : HashMap;
 import mir.ndslice;
 import mir.glas.l1;
 import mir.glas.l2;
+import mir.math;
 
 import seqtagsim.util;
 import seqtagsim.embedding;
@@ -40,6 +43,14 @@ struct Dataset(Embedding : EmbeddingBase)
         this.similarityThreshold = similarityThreshold;
     }
 
+    ~this()
+    {
+        if (embeddings.length)
+        {
+            pureFree(embeddings.ptr);
+        }
+    }
+
     @disable this(this);
 
     @disable this();
@@ -52,6 +63,8 @@ struct Dataset(Embedding : EmbeddingBase)
      */
     void read(Range)(Range range) if (isInputRange!Range && isInputRange!(ReturnType!((Range r) => r.bySegment)))
     {
+        import std.algorithm.searching : find;
+
         foreach (sentence; range.bySegment)
         {
             if (sentence.empty)
@@ -61,7 +74,20 @@ struct Dataset(Embedding : EmbeddingBase)
             {
                 Label* l = tag in labelMap;
                 if (!l)
-                    l = labelMap.put(copy(tag), Label(labelMap.length, 0));
+                {
+                    if (fuseMultiTokenSpans)
+                    {
+                        uint encodedLabel = uniqueLabels | ((tag[0] == iMarker) << bitMaskPosition);
+                        auto match = labelMap.byPair.find!((a, b) => a[0][1 .. $] == b)(tag[1 .. $]);
+                        if (!match.empty)
+                            encodedLabel = match.front[1].id ^ iMask;
+                        else
+                            uniqueLabels++;
+                        l = labelMap.put(copy(tag), Label(encodedLabel, 0));
+                    }
+                    else
+                        l = labelMap.put(copy(tag), Label(uniqueLabels++, 0));
+                }
                 l.count++;
                 tokens ~= copy(word);
                 labels ~= cast(ubyte) l.id;
@@ -104,6 +130,13 @@ struct Dataset(Embedding : EmbeddingBase)
             emb.normEmbeddings(sentenceBatch, embeddings[i .. i += tokensInBatch]);
         }
         emb.endEmbedding();
+        if (fuseMultiTokenSpans)
+        {
+            immutable individualLabels = labels.length;
+            fuseMultiTokenEmbeddings(0, labels.length);
+            stderr.writefln!"%s individual tokens, fused %s multi-token spans, final %s tokens"(individualLabels,
+                    individualLabels - labels.length, labels.length);
+        }
         stderr.writeln();
     }
 
@@ -119,8 +152,8 @@ struct Dataset(Embedding : EmbeddingBase)
         assert(embeddings.field.all!(x => x == x));
         assert(other.embeddings.field.all!(x => x == x));
 
-        size_t[2] dimensions = [labelMap.length, other.labelMap.length];
-        size_t[2] dimensionsOther = [other.labelMap.length, labelMap.length];
+        size_t[2] dimensions = [uniqueLabels, other.uniqueLabels];
+        size_t[2] dimensionsOther = [other.uniqueLabels, uniqueLabels];
         auto weightedMatrix = rcslice!double(dimensions, double.epsilon);
         auto matrix = rcslice!double(dimensions, double.epsilon);
         auto weightedMatrixOther = rcslice!double(dimensionsOther, double.epsilon);
@@ -224,6 +257,11 @@ private:
     typeof(mmapRegionList(0)) allocator = mmapRegionList(1024 * 1024);
     OutputBuffer!(string, Mallocator) tokens;
     OutputBuffer!(uint[2], Mallocator) sentences;
+    uint uniqueLabels;
+    bool fuseMultiTokenSpans = true;
+    enum char iMarker = 'I';
+    enum uint bitMaskPosition = 7;
+    enum uint iMask = 1 << bitMaskPosition;
 
     string copy(const(char)[] s)
     {
@@ -256,4 +294,75 @@ private:
         }
         unmatchedTokenCount = localUnmatchedTokenCount;
     }
+
+    void fuseMultiTokenEmbeddings(size_t start, size_t end)
+    {
+        bool spanActive;
+        size_t spanStart;
+        size_t spanEnd;
+
+        Progress progress = Progress(end - start);
+
+        for (size_t i = start; i < end; i++)
+        {
+            if ((labels[i] & iMask) == 0)
+            {
+                immutable uint activeTag = labels[i];
+                spanActive = true;
+                spanStart = i;
+                spanEnd = spanStart + 1;
+                for (; spanEnd < end && (labels[spanEnd] & iMask) && (labels[spanEnd] & ~iMask) == activeTag; spanEnd++)
+                {
+                    progress++;
+                }
+                if (spanEnd == spanStart + 1)
+                    continue;
+                labels.remove(spanStart + 1, spanEnd);
+
+                foreach (Slice!(float*) e; embeddings[spanStart + 1 .. spanEnd])
+                    embeddings[spanStart][] += e;
+                embeddings[spanStart][] *= 1f / (spanEnd - spanStart);
+                foreach (idx; 0 .. embeddings[spanEnd .. $].length)
+                    embeddings[spanStart + 1 .. $][idx][] = embeddings[spanEnd .. $][idx];
+                // embeddings[spanStart][] *= 1f / nrm2(embeddings[spanStart]);
+
+                end -= spanEnd - spanStart - 1;
+            }
+            progress++;
+        }
+        embeddings = embeddings[0 .. end];
+        embeddings._iterator = cast(embeddings.DeepElement*) pureRealloc(embeddings.ptr,
+                embeddings.DeepElement.sizeof * embeddings.elementCount);
+    }
+}
+
+unittest
+{
+    import std.range : enumerate;
+
+    EmbeddingBase emb;
+    Dataset!EmbeddingBase ds = Dataset!EmbeddingBase(emb);
+    ds.labels ~= 0;
+    ds.labels ~= 1;
+    ds.labels ~= 2;
+    ds.labels ~= 2 | ds.iMask;
+    ds.labels ~= 2 | ds.iMask;
+    ds.labels ~= 0;
+    ds.labels ~= 1;
+    ds.labels ~= 1 | ds.iMask;
+    ds.labels ~= 2;
+    ds.labels ~= 2 | ds.iMask;
+    ds.labels ~= 1;
+    ds.labels ~= 0;
+    ds.embeddings = makeUninitSlice!float(Mallocator.instance, 12, 2);
+    ds.embeddings[] = 0f;
+    foreach (i, e; ds.embeddings.enumerate)
+    {
+        e[0] = i;
+        e[1] = i * i;
+        // e[] *= 1f / nrm2(e);
+    }
+    ds.fuseMultiTokenEmbeddings(0, 12);
+    assert(ds.labels.data == [0, 1, 2, 0, 1, 2, 1, 0]);
+    assert(ds.embeddings.length == ds.labels.length);
 }

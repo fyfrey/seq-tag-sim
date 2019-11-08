@@ -33,9 +33,10 @@ import std.stdio;
     @disable this(this);
     enum embeddingDim = 768;
 
-    this(bool showTokensToClient)
+    this(bool showTokensToClient, Duration timeout)
     {
         this.showTokensToClient = showTokensToClient;
+        this.timeout = timeout;
     }
 
     void initialize(string serverAddress = null)
@@ -51,10 +52,12 @@ import std.stdio;
         char[256] addressBuffer;
         sender = Socket(context, SocketType.push);
         sender.linger = Duration.zero;
+        sender.sendTimeout = timeout;
         sender.connect(sformat!"tcp://%s:5555"(addressBuffer, serverAddress));
 
         receiver = Socket(context, SocketType.sub);
         receiver.linger = Duration.zero;
+        receiver.receiveTimeout = timeout;
         receiver.subscribe(uuid);
         receiver.connect(sformat!"tcp://%s:5556"(addressBuffer, serverAddress));
 
@@ -174,11 +177,13 @@ private:
     __gshared bool showTokensToClient;
     __gshared Region!Mallocator receiveAllocator;
     __gshared Region!Mallocator sendAllocator;
+    Duration timeout = 1.seconds;
 }
 
 unittest
 {
     BertEmbedding bert = BertEmbedding();
+    bert.timeout = 1.msecs;
     bert.initialize();
     string[][] sentences = [
         ["I", "'m", "not", "sure", "how", "I", "would", "have", "handled", "it", "."],
