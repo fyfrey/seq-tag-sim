@@ -78,6 +78,11 @@ struct OutputBuffer(T, Allocator)
         put(elem);
     }
 
+    void opIndexAssign(const T elem, size_t index)
+    {
+        buf[index] = elem;
+    }
+
     T[] data()
     {
         return buf[0 .. len];

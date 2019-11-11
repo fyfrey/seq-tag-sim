@@ -35,7 +35,7 @@ import std.experimental.allocator.mallocator;
         return ft.getDimension();
     }
 
-    void normEmbeddings(string[][] sentences, Slice!(float*, 2) storage)
+    void embed(string[][] sentences, Slice!(float*, 2) storage)
     {
         size_t i;
         foreach (string[] sentence; sentences)
@@ -43,7 +43,8 @@ import std.experimental.allocator.mallocator;
             {
                 auto vector = storage[i++];
                 ft.fillWordVector(word, vector);
-                vector[] *= 1f / nrm2(vector);
+                if (normalize)
+                    vector[] *= 1f / nrm2(vector);
             }
     }
 

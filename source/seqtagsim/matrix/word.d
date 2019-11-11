@@ -243,7 +243,7 @@ version (embedding)
 
         void beginEmbedding()
         {
-            emb.beginEmbedding(vocab.length, (a, b) => writeln(a, "/", b));
+            emb.beginEmbedding(vocab.length, true, (a, b) => writeln(a, "/", b));
             idToWord = allocator.makeArray!string(vocab.length);
             embeddings = allocator.makeUninitSlice!float(vocab.length, emb.embeddingDim);
             size_t idx;
@@ -254,7 +254,7 @@ version (embedding)
             {
                 idToWord[idx] = word;
                 sentence[0] = word;
-                emb.normEmbeddings(sentences[], embeddings[idx .. idx + 1]);
+                emb.embed(sentences[], embeddings[idx .. idx + 1]);
                 idx++;
             }
             emb.endEmbedding();

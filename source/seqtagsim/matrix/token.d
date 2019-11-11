@@ -7,7 +7,6 @@
 module seqtagsim.matrix.token;
 
 version (embedding):
-
 import std.typecons;
 import std.stdio;
 import std.range : chunks, isInputRange;
@@ -37,10 +36,10 @@ struct Dataset(Embedding : EmbeddingBase)
 {
     alias Label = Tuple!(uint, "id", uint, "count");
 
-    this(ref Embedding emb, float similarityThreshold = 0.0)
+    this(ref Embedding emb, const DatasetConfig config = DatasetConfig.init)
     {
         this.emb = &emb;
-        this.similarityThreshold = similarityThreshold;
+        this.config = config;
     }
 
     ~this()
@@ -75,9 +74,9 @@ struct Dataset(Embedding : EmbeddingBase)
                 Label* l = tag in labelMap;
                 if (!l)
                 {
-                    if (fuseMultiTokenSpans)
+                    if (config.fuseMultiTokenSpans)
                     {
-                        uint encodedLabel = uniqueLabels | ((tag[0] == iMarker) << bitMaskPosition);
+                        uint encodedLabel = uniqueLabels | ((tag[0] == config.iMarker) << bitMaskPosition);
                         auto match = labelMap.byPair.find!((a, b) => a[0][1 .. $] == b)(tag[1 .. $]);
                         if (!match.empty)
                             encodedLabel = match.front[1].id ^ iMask;
@@ -104,7 +103,6 @@ struct Dataset(Embedding : EmbeddingBase)
         labels.minimize();
         tokens.minimize();
         sentences.minimize();
-        embeddings = makeUninitSlice!float(Mallocator.instance, tokens.length, emb.embeddingDim);
     }
 
     /**
@@ -114,11 +112,15 @@ struct Dataset(Embedding : EmbeddingBase)
     {
         import std.algorithm : mapp = map, sum;
 
+        embeddings = makeUninitSlice!float(Mallocator.instance, tokens.length, emb.embeddingDim);
+        static immutable progressMessage = "\rEmbedded %d of %d batches (%.1f%%)";
         size_t i;
         enum batchSize = 64;
         immutable numberOfBatches = (sentences.length + batchSize - 1) / batchSize;
-        emb.beginEmbedding(numberOfBatches, (progress,
-                total) => stderr.writef!"\rEmbedded %d of %d batches (%.1f%%)"(progress, total, 100 * progress / cast(double) total));
+        immutable bool normalize = !config.fuseMultiTokenSpans;
+        stderr.writef!progressMessage(0, numberOfBatches, 0.0);
+        emb.beginEmbedding(numberOfBatches, normalize, (progress, total) => stderr.writef!progressMessage(progress,
+                total, 100 * progress / cast(double) total));
         string[] allTokens = tokens.data;
         foreach (uint[2][] batch; chunks(sentences.data, batchSize))
         {
@@ -127,17 +129,19 @@ struct Dataset(Embedding : EmbeddingBase)
                 sentenceStorage[s] = allTokens[indices[0] .. indices[1]];
             string[][] sentenceBatch = sentenceStorage[0 .. batch.length];
             immutable tokensInBatch = sentenceBatch.mapp!(s => s.length).sum;
-            emb.normEmbeddings(sentenceBatch, embeddings[i .. i += tokensInBatch]);
+            emb.embed(sentenceBatch, embeddings[i .. i += tokensInBatch]);
         }
         emb.endEmbedding();
-        if (fuseMultiTokenSpans)
+        stderr.writeln();
+        if (config.fuseMultiTokenSpans)
         {
+            StopWatch sw = StopWatch(AutoStart.yes);
             immutable individualLabels = labels.length;
+            stderr.writef!"Fusing %s individual tokens..."(individualLabels);
             fuseMultiTokenEmbeddings(0, labels.length);
-            stderr.writefln!"%s individual tokens, fused %s multi-token spans, final %s tokens"(individualLabels,
+            stderr.writefln!"done in %s ms! Fused %s multi-token spans -> %s final tokens for comparison."(sw.peek.total!"msecs",
                     individualLabels - labels.length, labels.length);
         }
-        stderr.writeln();
     }
 
     /**
@@ -180,7 +184,7 @@ struct Dataset(Embedding : EmbeddingBase)
             {
                 immutable tagId = thisLabels[idx + i];
                 immutable otherTagId = otherLabels[pair[1]];
-                if (pair[0] > similarityThreshold)
+                if (pair[0] > config.similarityThreshold)
                 {
                     weightedMatrix[tagId, otherTagId] += pair[0];
                     matrix[tagId, otherTagId] += 1.0;
@@ -203,7 +207,7 @@ struct Dataset(Embedding : EmbeddingBase)
                     return;
                 }
                 immutable otherTagId = thisLabels[pair[1]];
-                if (pair[0] > similarityThreshold)
+                if (pair[0] > config.similarityThreshold)
                 {
                     weightedMatrixOther[tagId, otherTagId] += pair[0];
                     matrixOther[tagId, otherTagId] += 1.0;
@@ -253,13 +257,11 @@ private:
     OutputBuffer!(ubyte, Mallocator) labels;
     Embedding* emb;
     Slice!(float*, 2, Contiguous) embeddings;
-    float similarityThreshold = 0.0;
     typeof(mmapRegionList(0)) allocator = mmapRegionList(1024 * 1024);
     OutputBuffer!(string, Mallocator) tokens;
     OutputBuffer!(uint[2], Mallocator) sentences;
     uint uniqueLabels;
-    bool fuseMultiTokenSpans = true;
-    enum char iMarker = 'I';
+    immutable DatasetConfig config;
     enum uint bitMaskPosition = 7;
     enum uint iMask = 1 << bitMaskPosition;
 
@@ -283,7 +285,7 @@ private:
             immutable Tuple!(float, uint) maxIdx = computeSimilarity(otherEmb, thisEmb[idx]);
             immutable similarity = maxIdx[0];
             immutable otherTagId = otherLabels[maxIdx[1]];
-            if (similarity > similarityThreshold)
+            if (similarity > config.similarityThreshold)
             {
                 atomicOp!"+="(*cast(shared double*)&weightedMatrix[tagId, otherTagId], similarity);
                 atomicOp!"+="(*cast(shared double*)&matrix[tagId, otherTagId], 1.0);
@@ -295,42 +297,42 @@ private:
         unmatchedTokenCount = localUnmatchedTokenCount;
     }
 
+    /**
+     * Fuses same-label tokens together. Spans across function calls are not handled!
+     */
     void fuseMultiTokenEmbeddings(size_t start, size_t end)
     {
-        bool spanActive;
-        size_t spanStart;
-        size_t spanEnd;
+        size_t removed;
 
-        Progress progress = Progress(end - start);
-
-        for (size_t i = start; i < end; i++)
+        for (size_t i = start, current = start; i < end; i++, current++)
         {
             if ((labels[i] & iMask) == 0)
             {
                 immutable uint activeTag = labels[i];
-                spanActive = true;
-                spanStart = i;
-                spanEnd = spanStart + 1;
+                immutable size_t spanStart = i;
+                size_t spanEnd = spanStart + 1;
                 for (; spanEnd < end && (labels[spanEnd] & iMask) && (labels[spanEnd] & ~iMask) == activeTag; spanEnd++)
                 {
-                    progress++;
                 }
-                if (spanEnd == spanStart + 1)
+                if (spanEnd != spanStart + 1)
+                {
+                    labels[current] = labels[spanStart];
+                    embeddings[current][] = embeddings[spanStart];
+                    foreach (Slice!(float*) e; embeddings[spanStart + 1 .. spanEnd])
+                        embeddings[current][] += e;
+                    embeddings[current][] *= 1f / nrm2(embeddings[current]);
+
+                    i += spanEnd - spanStart - 1;
+                    removed += spanEnd - spanStart - 1;
                     continue;
-                labels.remove(spanStart + 1, spanEnd);
-
-                foreach (Slice!(float*) e; embeddings[spanStart + 1 .. spanEnd])
-                    embeddings[spanStart][] += e;
-                embeddings[spanStart][] *= 1f / (spanEnd - spanStart);
-                foreach (idx; 0 .. embeddings[spanEnd .. $].length)
-                    embeddings[spanStart + 1 .. $][idx][] = embeddings[spanEnd .. $][idx];
-                // embeddings[spanStart][] *= 1f / nrm2(embeddings[spanStart]);
-
-                end -= spanEnd - spanStart - 1;
+                }
             }
-            progress++;
+            labels[current] = labels[i];
+            embeddings[current][] = embeddings[i] * (1f / nrm2(embeddings[i]));
         }
-        embeddings = embeddings[0 .. end];
+        labels.remove(labels.length - removed, labels.length);
+        labels.minimize();
+        embeddings = embeddings[0 .. $ - removed];
         embeddings._iterator = cast(embeddings.DeepElement*) pureRealloc(embeddings.ptr,
                 embeddings.DeepElement.sizeof * embeddings.elementCount);
     }
@@ -365,4 +367,12 @@ unittest
     ds.fuseMultiTokenEmbeddings(0, 12);
     assert(ds.labels.data == [0, 1, 2, 0, 1, 2, 1, 0]);
     assert(ds.embeddings.length == ds.labels.length);
+}
+
+
+struct DatasetConfig
+{
+    float similarityThreshold = 0.0f;
+    bool fuseMultiTokenSpans = false;
+    char iMarker = 'I';
 }

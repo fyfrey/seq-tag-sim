@@ -39,6 +39,8 @@ struct CompareConfig
 	{
 		string embeddings;
 		float similarityThreshold = 0.0f;
+		bool fuseMultiTokenSpans = false;
+		char iMarker = 'I';
 		Context context = Context.none;
 		enum Context
 		{
@@ -63,29 +65,30 @@ void selectAndPerformComparison(const ref CompareConfig config)
 
 		if (config.context != CompareConfig.Context.none)
 		{
+			immutable DatasetConfig dc = DatasetConfig(config.similarityThreshold, config.fuseMultiTokenSpans, config.iMarker);
 			if (config.context == CompareConfig.Context.elmo)
 			{
 				version (python)
-					return compare!(Dataset!ElmoEmbedding, ElmoEmbedding)(config);
+					return compare!(Dataset!ElmoEmbedding, ElmoEmbedding)(config, dc);
 				else
 					return stderr.writeln("Cannot use ELMo embeddings because this program is not compiled with Python support!");
 			}
 			else if (config.context == CompareConfig.Context.bert)
-				return compare!(Dataset!BertEmbedding, BertEmbedding)(config);
+				return compare!(Dataset!BertEmbedding, BertEmbedding)(config, dc);
 		}
 		else
 		{
 			version (fasttext)
 				if (config.embeddings != null)
-					return compare!(EmbeddingTextOverlap!FastTextEmbedding, FastTextEmbedding)(config);
+					return compare!(EmbeddingTextOverlap!FastTextEmbedding, FastTextEmbedding)(config, config.similarityThreshold);
 		}
 	}
-	compare!(Vocabulary, void)(config);
+	compare!(Vocabulary, void, int)(config, 0);
 }
 
 private:
 
-void compare(Type, Embedding)(const ref CompareConfig config)
+void compare(Type, Embedding, Options)(const ref CompareConfig config, const Options options)
 {
 	StopWatch sw = StopWatch(AutoStart.yes);
 
@@ -102,8 +105,8 @@ void compare(Type, Embedding)(const ref CompareConfig config)
 		taskPool.put(loadModel);
 
 		sw.reset();
-		auto d1 = Type!Embedding(emb);
-		auto d2 = Type!Embedding(emb);
+		auto d1 = Type!Embedding(emb, options);
+		auto d2 = Type!Embedding(emb, options);
 	}
 
 	auto files1 = config.dataset1Paths.length > 1 ? config.dataset1Paths : listFiles(config.dataset1Paths[0],

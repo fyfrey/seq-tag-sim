@@ -29,7 +29,7 @@ import pyd.extra;
         python.py_stmts("from allennlp.commands.elmo import ElmoEmbedder\nelmo = ElmoEmbedder()\n");
     }
 
-    void normEmbeddings(string[][] sentences, Slice!(float*, 2) storage)
+    void embed(string[][] sentences, Slice!(float*, 2) storage)
     {
         python.sentences = sentences;
         PydObject emb = python.py_eval("elmo.embed_batch(sentences)");
@@ -44,7 +44,8 @@ import pyd.extra;
                 vector[] = slice[0, j];
                 vector[] += slice[1, j];
                 vector[] += slice[2, j];
-                vector[] *= 1f / nrm2(vector);
+                if (normalize)
+                    vector[] *= 1f / nrm2(vector);
             }
         }
     }
@@ -82,7 +83,7 @@ unittest
         .fold!((a, b) => a + b)(0UL);
     auto wordEmbeddings = slice!float(tokens, 1024);
     stderr.write("Fetching word embeddings for ", tokens, " tokens...");
-    elmo.normEmbeddings(sentences, wordEmbeddings);
+    elmo.embed(sentences, wordEmbeddings);
     stderr.writeln("Done!");
     writeln("Cosine distance ", 1f - cosineSimilarity(wordEmbeddings[3], wordEmbeddings[9]));
 }

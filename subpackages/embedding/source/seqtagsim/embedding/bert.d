@@ -31,7 +31,7 @@ import std.stdio;
     mixin base;
 
     @disable this(this);
-    enum embeddingDim = 768;
+    size_t embeddingDim;
 
     this(bool showTokensToClient, Duration timeout)
     {
@@ -79,19 +79,20 @@ import std.stdio;
         if (poolingStrategy != 0)
             assert(0, "Server must be startet with '-pooling_strategy NONE' to be able to obtain word embeddings!");
         receiver.receive(cast(ubyte[]) requestIdBuffer[]);
+        obtainEmbeddingDimension();
     }
 
-    void beginEmbedding(size_t numberOfBatches, void function(size_t, size_t) progressCallback)
+    void beginEmbedding(size_t numberOfBatches, bool normalize = true, void delegate(size_t, size_t) progressCallback = null)
     {
         openRequests = makeArray!RequestData(Mallocator.instance, numberOfBatches);
         idOffset = requestId;
-        receiverTask = scopedTask((size_t a, void function(size_t, size_t) b) {
-            receiveAll(a, b);
-        }, numberOfBatches, progressCallback);
+        receiverTask = scopedTask((size_t a, bool n, void delegate(size_t, size_t) b) {
+            receiveAll(a, n, b);
+        }, numberOfBatches, normalize, progressCallback);
         taskPool.put(receiverTask);
     }
 
-    void normEmbeddings(string[][] sentences, Slice!(float*, 2, Contiguous) storage)
+    void embed(string[][] sentences, Slice!(float*, 2) storage)
     {
         assert(storage.length!1 == embeddingDim);
         size_t[] sentenceLengths = makeArray!size_t(Mallocator.instance, sentences.stdMap!(s => s.length));
@@ -109,6 +110,16 @@ private:
 
     alias RequestData = Tuple!(size_t[], Slice!(float*, 2, Contiguous));
 
+    void obtainEmbeddingDimension()
+    {
+        string[1] s = ["test"];
+        string[][1] sentences = [s];
+        send(sentences[]);
+        auto result = receive();
+        embeddingDim = result.embeddings.shape[2];
+        receiveAllocator.deallocateAll;
+    }
+
     void send(string[][] sentences)
     {
         scope (exit)
@@ -122,20 +133,46 @@ private:
         sender.send(sformat!"%d"(formatBuffer, sentences.length));
     }
 
-    void receiveAll(size_t numberOfBatches, void function(size_t, size_t) progressCallback)
+    void receiveAll(size_t numberOfBatches, bool normalize, void delegate(size_t, size_t) progressCallback)
     {
-        foreach(i; 0 .. numberOfBatches)
+        foreach(i; 1 .. numberOfBatches + 1)
         {
+            receiveEmbeddings(normalize);
             progressCallback(i, numberOfBatches);
-            receive();
         }
-        progressCallback(numberOfBatches, numberOfBatches);
     }
 
-    void receive()
+    void receiveEmbeddings(bool normalize)
     {
         scope (exit)
             receiveAllocator.deallocateAll;
+        with (receive())
+        {
+            size_t[] sentenceLengths = openRequests[receivedId - idOffset][0];
+            Slice!(float*, 2, Contiguous) storage = openRequests[receivedId - idOffset][1];
+            immutable seqLen = maxSeqLen ? maxSeqLen : sentenceLengths.maxElement + 2;
+            assert(embeddings.shape == [sentenceLengths.length, seqLen, embeddingDim]);
+
+            size_t i;
+            if (normalize)
+            {
+                foreach (j; 0 .. sentenceLengths.length)
+                    foreach (k; 1 .. sentenceLengths[j] + 1)
+                        storage[i++][] = embeddings[j, k] * (1f / nrm2(embeddings[j, k]));
+            }
+            else
+            {
+                foreach (j; 0 .. sentenceLengths.length)
+                    foreach (k; 1 .. sentenceLengths[j] + 1)
+                        storage[i++][] = embeddings[j, k];
+            }
+            assert(i == storage.length!0);
+            dispose(Mallocator.instance, sentenceLengths);
+        }
+    }
+
+    auto receive()
+    {
         ubyte[36] uuidBuf;
         immutable uuidBufferSize = receiver.receive(uuidBuf);
         assert(uuidBuf.length == uuidBufferSize);
@@ -152,17 +189,7 @@ private:
         ubyte[20] requestIdBuffer;
         immutable requestIdLength = receiver.receive(requestIdBuffer);
         size_t receivedId = requestIdBuffer[0 .. requestIdLength].asString.to!size_t;
-        size_t[] sentenceLengths = openRequests[receivedId - idOffset][0];
-        Slice!(float*, 2, Contiguous) storage = openRequests[receivedId - idOffset][1];
-        immutable seqLen = maxSeqLen ? maxSeqLen : sentenceLengths.maxElement + 2;
-        assert(shape == [sentenceLengths.length, seqLen, embeddingDim]);
-
-        size_t i;
-        foreach (j; 0 .. sentenceLengths.length)
-            foreach (k; 1 .. sentenceLengths[j] + 1)
-                storage[i++][] = slice[j, k] * (1f / nrm2(slice[j, k]));
-        assert(i == storage.length!0);
-        dispose(Mallocator.instance, sentenceLengths);
+        return tuple!("embeddings", "receivedId")(slice, receivedId);
     }
 
     __gshared Context context;
@@ -172,12 +199,12 @@ private:
     size_t requestId;
     __gshared size_t idOffset;
     __gshared RequestData[] openRequests;
-    Task!(run, void delegate(size_t, void function(size_t, size_t)), size_t, void function(size_t, size_t)) receiverTask;
+    Task!(run, void delegate(size_t, bool, void delegate(size_t, size_t)), size_t, bool, void delegate(size_t, size_t)) receiverTask;
     __gshared int maxSeqLen;
     __gshared bool showTokensToClient;
     __gshared Region!Mallocator receiveAllocator;
     __gshared Region!Mallocator sendAllocator;
-    Duration timeout = 1.seconds;
+    Duration timeout = 60.seconds;
 }
 
 unittest
