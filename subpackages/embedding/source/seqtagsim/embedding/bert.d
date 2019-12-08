@@ -31,7 +31,7 @@ import std.stdio;
     mixin base;
 
     @disable this(this);
-    size_t embeddingDim;
+    __gshared size_t embeddingDim;
 
     this(bool showTokensToClient, Duration timeout)
     {
@@ -151,7 +151,7 @@ private:
             size_t[] sentenceLengths = openRequests[receivedId - idOffset][0];
             Slice!(float*, 2, Contiguous) storage = openRequests[receivedId - idOffset][1];
             immutable seqLen = maxSeqLen ? maxSeqLen : sentenceLengths.maxElement + 2;
-            assert(embeddings.shape == [sentenceLengths.length, seqLen, embeddingDim]);
+            assert(embeddings.shape == [sentenceLengths.length, seqLen, embeddingDim], format!"%s != %s"(embeddings.shape, [sentenceLengths.length, seqLen, embeddingDim]));
 
             size_t i;
             if (normalize)

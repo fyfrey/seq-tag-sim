@@ -42,6 +42,7 @@ private void processArgs(string[] args)
 							]), &context, "s|similarity-threshold", "Minimal similarity [0,1] for word embeddings (default 0)", &similarityThreshold,
 						"e|embedding-location",
 						"path to fastText word vector file (in bin or ftz format with subword information) or BERT service address", &embeddings,
+						"split-sentences", "Split multi-sentence segments into single sentences for embedding compatibility (default false)", &splitSentences,
 						"fuse-spans", "Fuse same-label spans of multiple tokens to a single token for comparison (default false)", &fuseMultiTokenSpans,
 						"intermediate-marker", "Character marking a label as an intermediate, continuing label (default I)", &iMarker);
 			else

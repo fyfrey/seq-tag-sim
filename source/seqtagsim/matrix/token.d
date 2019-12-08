@@ -47,6 +47,7 @@ struct Dataset(Embedding : EmbeddingBase)
         if (embeddings.length)
         {
             pureFree(embeddings.ptr);
+            pureFree(fuseCounts.ptr);
         }
     }
 
@@ -68,7 +69,7 @@ struct Dataset(Embedding : EmbeddingBase)
         {
             if (sentence.empty)
                 continue;
-            immutable tokensPriorSentence = tokens.length;
+            auto tokensPriorSentence = tokens.length;
             foreach (string word, string tag; sentence)
             {
                 Label* l = tag in labelMap;
@@ -90,8 +91,14 @@ struct Dataset(Embedding : EmbeddingBase)
                 l.count++;
                 tokens ~= copy(word);
                 labels ~= cast(ubyte) l.id;
+                if (config.splitSentences && word.length == 1 && (word[0] == '.' || word[0] == '!' || word[0] == '?'))
+                {
+                    sentences ~= [cast(uint) tokensPriorSentence, cast(uint) tokens.length].staticArray;
+                    tokensPriorSentence = tokens.length;
+                }
             }
-            sentences ~= [cast(uint) tokensPriorSentence, cast(uint) tokens.length].staticArray;
+            if (tokensPriorSentence != tokens.length)
+                sentences ~= [cast(uint) tokensPriorSentence, cast(uint) tokens.length].staticArray;
         }
     }
 
@@ -133,6 +140,7 @@ struct Dataset(Embedding : EmbeddingBase)
         }
         emb.endEmbedding();
         stderr.writeln();
+        fuseCounts = makeSlice!float(Mallocator.instance, [labels.length].staticArray, 1f);
         if (config.fuseMultiTokenSpans)
         {
             StopWatch sw = StopWatch(AutoStart.yes);
@@ -159,9 +167,13 @@ struct Dataset(Embedding : EmbeddingBase)
         size_t[2] dimensions = [uniqueLabels, other.uniqueLabels];
         size_t[2] dimensionsOther = [other.uniqueLabels, uniqueLabels];
         auto weightedMatrix = rcslice!double(dimensions, double.epsilon);
+        auto fusedWeightedMatrix = rcslice!double(dimensions, double.epsilon);
         auto matrix = rcslice!double(dimensions, double.epsilon);
+        auto fusedMatrix = rcslice!double(dimensions, double.epsilon);
         auto weightedMatrixOther = rcslice!double(dimensionsOther, double.epsilon);
+        auto fusedWeightedMatrixOther = rcslice!double(dimensionsOther, double.epsilon);
         auto matrixOther = rcslice!double(dimensionsOther, double.epsilon);
+        auto fusedMatrixOther = rcslice!double(dimensionsOther, double.epsilon);
         immutable size_t lastPercent = cast(size_t)(labels.length * 0.01);
         Progress progress = Progress(labels.length + lastPercent);
         ulong unmatchedTokenCountThis;
@@ -184,10 +196,14 @@ struct Dataset(Embedding : EmbeddingBase)
             {
                 immutable tagId = thisLabels[idx + i];
                 immutable otherTagId = otherLabels[pair[1]];
+                immutable fuseFactor = fuseCounts[idx + i];
+                immutable otherFuseFactor = other.fuseCounts[pair[1]];
                 if (pair[0] > config.similarityThreshold)
                 {
                     weightedMatrix[tagId, otherTagId] += pair[0];
                     matrix[tagId, otherTagId] += 1.0;
+                    fusedMatrix[tagId, otherTagId] += fuseFactor * otherFuseFactor;
+                    fusedWeightedMatrix[tagId, otherTagId] += pair[0] * fuseFactor * otherFuseFactor;
                 }
                 else
                     unmatchedTokenCountThis++;
@@ -201,16 +217,15 @@ struct Dataset(Embedding : EmbeddingBase)
             foreach (size_t i, Tuple!(float, uint) pair; batch)
             {
                 immutable tagId = otherLabels[i];
-                if (pair[1] >= thisLabels.length)
-                {
-                    writeln(pair, thisLabels.length);
-                    return;
-                }
+                immutable fuseFactor = other.fuseCounts[i];
                 immutable otherTagId = thisLabels[pair[1]];
+                immutable otherFuseFactor = fuseCounts[pair[1]];
                 if (pair[0] > config.similarityThreshold)
                 {
                     weightedMatrixOther[tagId, otherTagId] += pair[0];
                     matrixOther[tagId, otherTagId] += 1.0;
+                    fusedWeightedMatrixOther[tagId, otherTagId] += pair[0] * fuseFactor * otherFuseFactor;
+                    fusedMatrixOther[tagId, otherTagId] += fuseFactor * otherFuseFactor;
                 }
                 else
                     unmatchedTokenCountOther++;
@@ -249,7 +264,8 @@ struct Dataset(Embedding : EmbeddingBase)
         stderr.writeln("Filling matrix counts ms: ", progress.peek.total!"msecs");
         writefln!"Unmatched tokens: %d / %.1f %%"(unmatchedTokenCountThis, 100.0 * unmatchedTokenCountThis / labels.length);
 
-        return tuple!("contextAB", "weightedAB", "contextBA", "weightedBA")(matrix, weightedMatrix, matrixOther, weightedMatrixOther);
+        return tuple!("contextAB", "weightedAB", "contextBA", "weightedBA", "fusedAB", "fusedWeightedAB", "fusedBA", "fusedWeightedBA")(
+                matrix, weightedMatrix, matrixOther, weightedMatrixOther, fusedMatrix, fusedWeightedMatrix, fusedMatrixOther, fusedWeightedMatrixOther);
     }
 
 private:
@@ -257,6 +273,7 @@ private:
     OutputBuffer!(ubyte, Mallocator) labels;
     Embedding* emb;
     Slice!(float*, 2, Contiguous) embeddings;
+    Slice!(float*) fuseCounts;
     typeof(mmapRegionList(0)) allocator = mmapRegionList(1024 * 1024);
     OutputBuffer!(string, Mallocator) tokens;
     OutputBuffer!(uint[2], Mallocator) sentences;
@@ -321,7 +338,7 @@ private:
                     foreach (Slice!(float*) e; embeddings[spanStart + 1 .. spanEnd])
                         embeddings[current][] += e;
                     embeddings[current][] *= 1f / nrm2(embeddings[current]);
-
+                    fuseCounts[current] = spanEnd - spanStart;
                     i += spanEnd - spanStart - 1;
                     removed += spanEnd - spanStart - 1;
                     continue;
@@ -335,6 +352,9 @@ private:
         embeddings = embeddings[0 .. $ - removed];
         embeddings._iterator = cast(embeddings.DeepElement*) pureRealloc(embeddings.ptr,
                 embeddings.DeepElement.sizeof * embeddings.elementCount);
+        fuseCounts = fuseCounts[0 .. $ - removed];
+        fuseCounts._iterator = cast(fuseCounts.DeepElement*) pureRealloc(fuseCounts.ptr,
+                fuseCounts.DeepElement.sizeof * fuseCounts.elementCount);
     }
 }
 
@@ -372,6 +392,7 @@ unittest
 
 struct DatasetConfig
 {
+    bool splitSentences = false;
     float similarityThreshold = 0.0f;
     bool fuseMultiTokenSpans = false;
     char iMarker = 'I';

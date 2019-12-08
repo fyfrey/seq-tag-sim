@@ -38,6 +38,7 @@ struct CompareConfig
 	version (embedding)
 	{
 		string embeddings;
+		bool splitSentences = false;
 		float similarityThreshold = 0.0f;
 		bool fuseMultiTokenSpans = false;
 		char iMarker = 'I';
@@ -65,7 +66,8 @@ void selectAndPerformComparison(const ref CompareConfig config)
 
 		if (config.context != CompareConfig.Context.none)
 		{
-			immutable DatasetConfig dc = DatasetConfig(config.similarityThreshold, config.fuseMultiTokenSpans, config.iMarker);
+			immutable DatasetConfig dc = DatasetConfig(config.splitSentences, config.similarityThreshold,
+					config.fuseMultiTokenSpans, config.iMarker);
 			if (config.context == CompareConfig.Context.elmo)
 			{
 				version (python)
@@ -142,6 +144,8 @@ void compare(Type, Embedding, Options)(const ref CompareConfig config, const Opt
 		computeInformationTheoreticMeasuresFromMatrix(result[i].lightScope).prettyPrintStruct;
 	}
 	stderr.writefln!"\nComparing datasets took %s ms"(sw.peek.total!"msecs");
+	stderr.flush();
+	stdout.flush();
 }
 
 void processByFilename(alias method, T)(string filename, FileFormat format, ref T processor)
