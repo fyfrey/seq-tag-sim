@@ -14,12 +14,22 @@ float cosineSimilarity(Slice!(float*) a, Slice!(float*) b)
     return dot(a, b) / (nrm2(a) * nrm2(b));
 }
 
-
 struct EmbeddingBase
 {
     size_t embeddingDim();
-    void initialize(string dummy) {}
-    void beginEmbedding(size_t numberOfBatches, void function(size_t, size_t) progressCallback) {}
-    void normEmbeddings(string[][] sentences, Slice!(float*, 2) storage);
-    void endEmbedding() {}
+    void initialize(string dummy)
+    {
+    }
+
+    void beginEmbedding(size_t numberOfBatches, bool normalize = true, void delegate(size_t, size_t) progressCallback = null)
+    {
+        this.normalize = normalize;
+    }
+
+    void embed(string[][] sentences, Slice!(float*, 2) storage);
+    void endEmbedding()
+    {
+    }
+
+    bool normalize;
 }

@@ -41,14 +41,16 @@ private void processArgs(string[] args)
 								EnumMembers!(CompareConfig.Context)
 							]), &context, "s|similarity-threshold", "Minimal similarity [0,1] for word embeddings (default 0)", &similarityThreshold,
 						"e|embedding-location",
-						"path to fastText word vector file (in bin or ftz format with subword information) or BERT service address",
-						&embeddings,);
+						"path to fastText word vector file (in bin or ftz format with subword information) or BERT service address", &embeddings,
+						"split-sentences", "Split multi-sentence segments into single sentences for embedding compatibility (default false)", &splitSentences,
+						"fuse-spans", "Fuse same-label spans of multiple tokens to a single token for comparison (default false)", &fuseMultiTokenSpans,
+						"intermediate-marker", "Character marking a label as an intermediate, continuing label (default I)", &iMarker);
 			else
 				auto extraOptions = tuple();
 			result = getopt(args, config.passThrough, config.keepEndOfOptions, extraOptions.expand, "f|format",
 					"File format, use twice when dataset formats differ: " ~ format!"<%(%s|%)>"([
 							EnumMembers!(FileFormat)
-						]), &formats, "p|pattern", "GLOB pattern to select files, e.g. *.txt, use twice", &patterns, "threads",
+						]), &formats, "p|pattern", "GLOB pattern to select files, e.g. *.txt, use twice", &patterns, "t|threads",
 					"number of threads to use for parallelizable operations (defaults to the number of logical cores)", &threads);
 			args = args[1 .. $];
 			defaultPoolThreads(threads - 1);
@@ -92,7 +94,7 @@ private void processArgs(string[] args)
 		}
 		else if (formats.length > 2)
 		{
-			stderr.writeln("More than two file formats are given, but only once or two are allowed");
+			stderr.writeln("More than two file formats are given, but only one or two are allowed");
 			printHelp(result);
 			return;
 		}
