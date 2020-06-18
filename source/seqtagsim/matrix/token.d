@@ -44,11 +44,10 @@ struct Dataset(Embedding : EmbeddingBase)
 
     ~this()
     {
-        if (embeddings.length)
-        {
-            pureFree(embeddings.ptr);
-            pureFree(fuseCounts.ptr);
-        }
+        if (embeddings != embeddings.init)
+            Mallocator.instance.deallocate(embeddings.field);
+        if (fuseCounts != fuseCounts.init)
+            Mallocator.instance.deallocate(fuseCounts.field);
     }
 
     @disable this(this);
@@ -218,6 +217,11 @@ struct Dataset(Embedding : EmbeddingBase)
             {
                 immutable tagId = otherLabels[i];
                 immutable fuseFactor = other.fuseCounts[i];
+                if ((pair[1] >= thisLabels.length) | (pair[1] >= fuseCounts.length))
+                {
+                    stderr.writefln!"Error during computation at %s th token: %s %s"(i, pair, thisLabels.length);
+                    continue;
+                }
                 immutable otherTagId = thisLabels[pair[1]];
                 immutable otherFuseFactor = fuseCounts[pair[1]];
                 if (pair[0] > config.similarityThreshold)
@@ -272,7 +276,7 @@ private:
     HashMap!(string, Label, Mallocator, false) labelMap;
     OutputBuffer!(ubyte, Mallocator) labels;
     Embedding* emb;
-    Slice!(float*, 2, Contiguous) embeddings;
+    Slice!(float*, 2) embeddings;
     Slice!(float*) fuseCounts;
     typeof(mmapRegionList(0)) allocator = mmapRegionList(1024 * 1024);
     OutputBuffer!(string, Mallocator) tokens;

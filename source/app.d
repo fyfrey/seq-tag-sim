@@ -94,7 +94,7 @@ private void processArgs(string[] args)
 		}
 		else if (formats.length > 2)
 		{
-			stderr.writeln("More than two file formats are given, but only once or two are allowed");
+			stderr.writeln("More than two file formats are given, but only one or two are allowed");
 			printHelp(result);
 			return;
 		}

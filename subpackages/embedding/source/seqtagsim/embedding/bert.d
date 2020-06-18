@@ -219,8 +219,8 @@ unittest
     size_t tokens = sentences.stdMap!(s => s.length).fold!( (a,b) => a + b)(0UL);
     auto wordEmbeddings = slice!float(tokens, BertEmbedding.embeddingDim);
     stderr.write("Fetching word embeddings for ", tokens, " tokens...");
-    bert.beginEmbedding(1, (a,b) => stderr.writeln(a," ",b));
-    bert.normEmbeddings(sentences, wordEmbeddings);
+    bert.beginEmbedding(1, true, (a,b) => stderr.writeln(a," ",b));
+    bert.embed(sentences, wordEmbeddings);
     bert.endEmbedding();
     stderr.writeln("Done!");
     writeln("Cosine distance ", 1f - cosineSimilarity(wordEmbeddings[3], wordEmbeddings[9]));

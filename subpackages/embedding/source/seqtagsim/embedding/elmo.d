@@ -39,7 +39,6 @@ import pyd.extra;
             Slice!(float*, 3, Universal) slice = numpyToMir(npArray);
             foreach (j; 0 .. slice.length!1)
             {
-                // storage[i++][] = slice[2,j] / nrm2(slice[2,j]);
                 auto vector = storage[i++];
                 vector[] = slice[0, j];
                 vector[] += slice[1, j];
