@@ -107,8 +107,8 @@ void compare(Type, Embedding, Options)(const ref CompareConfig config, const Opt
 		taskPool.put(loadModel);
 
 		sw.reset();
-		auto d1 = Type!Embedding(emb, options);
-		auto d2 = Type!Embedding(emb, options);
+		auto d1 = Type(emb, options);
+		auto d2 = Type(emb, options);
 	}
 
 	auto files1 = config.dataset1Paths.length > 1 ? config.dataset1Paths : listFiles(config.dataset1Paths[0],
