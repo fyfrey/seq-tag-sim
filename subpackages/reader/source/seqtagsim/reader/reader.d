@@ -13,25 +13,16 @@ private import seqtagsim.util;
 
 alias Pair = Tuple!(string, "word", string, "tag");
 
-immutable string[][string] posTagSets;
-
-shared static this()
-{
-    posTagSets = ["bnc" : bncC5Tags, "ud" : udPosTags, "ptb" : ptbPosTags];
-}
-
 version (allparser)
-    alias Readers = AliasSeq!(BinaryReader, TabNewlineReader, UdPosReader,
-            GermanNerReader, WnutConllReader, OntonotesConllPosReader,
-            OntonotesConllNerReader, ConllNerReader, ConllGerNerReader,
-            WikiGoldNerReader, GmbNerReader, BncPosReader, PtbPosReader,
+    alias Readers = AliasSeq!(BinaryReader, TabNewlineReader, UdPosReader, GermanNerReader, WnutConllReader,
+            OntonotesConllPosReader, OntonotesConllNerReader,
+            ConllNerReader, ConllGerNerReader, WikiGoldNerReader, GmbNerReader, BncPosReader, PtbPosReader,
             SecNerReader, EpConllNerReader);
 else
-    alias Readers = AliasSeq!(BinaryReader, TabNewlineReader, UdPosReader,
-            GermanNerReader, WnutConllReader, OntonotesConllPosReader,
-            OntonotesConllNerReader, ConllNerReader, ConllGerNerReader,
-            WikiGoldNerReader, GmbNerReader, SecNerReader, EpConllNerReader);
+    alias Readers = AliasSeq!(BinaryReader, TabNewlineReader, UdPosReader, GermanNerReader, WnutConllReader, OntonotesConllPosReader,
+            OntonotesConllNerReader, ConllNerReader, ConllGerNerReader, WikiGoldNerReader, GmbNerReader, SecNerReader, EpConllNerReader);
 
+/// Supported sequence tagging file formats
 enum FileFormat
 {
     deduce,
@@ -53,6 +44,7 @@ enum FileFormat
     epConllNER
 }
 
+/// Reads files where each sentence is in a single line and words / tags are separeted by tab
 struct TabNewlineReader
 {
     import std.algorithm : splitter;
@@ -167,6 +159,7 @@ private:
     string text;
 }
 
+/// Reader for custiom binary format
 struct BinaryReader
 {
     import std.exception : assumeUnique;
@@ -194,8 +187,12 @@ struct BinaryReader
     {
         import std.experimental.allocator.mallocator : Mallocator;
         import std.experimental.allocator : dispose;
+
         if (--(*refCount) == 0)
+        {
             Mallocator.instance.dispose(tags);
+            Mallocator.instance.dispose(refCount);
+        }
     }
 
     this(this)
@@ -332,287 +329,7 @@ private:
     }
 }
 
-static immutable string[] bncPosTags = [
-    "ADJ", "ADV", "ART", "CONJ", "INTERJ", "PREP", "PRON", "PUL", "PUN", "PUQ", "PUR", "SUBST", "UNC", "VERB"
-];
-
-static immutable string[] bncC5Tags = [
-    "AJ0", "AJ0-AV0", "AJ0-NN1", "AJ0-VVD", "AJ0-VVG", "AJ0-VVN", "AJC", "AJS", "AT0", "AV0",
-    "AV0-AJ0", "AVP", "AVP-PRP", "AVQ", "AVQ-CJS", "CJC", "CJS", "CJS-AVQ", "CJS-PRP", "CJT",
-    "CJT-DT0", "CRD", "CRD-PNI", "DPS", "DT0", "DT0-CJT", "DTQ", "EX0", "ITJ", "NN0", "NN1",
-    "NN1-AJ0", "NN1-NP0", "NN1-VVB", "NN1-VVG", "NN2", "NN2-VVZ", "NP0", "NP0-NN1", "ORD", "PNI",
-    "PNI-CRD", "PNP", "PNQ", "PNX", "POS", "PRF", "PRP", "PRP-AVP", "PRP-CJS", "PUL", "PUN", "PUQ",
-    "PUR", "TO0", "UNC", "VBB", "VBD", "VBG", "VBI", "VBN", "VBZ", "VDB", "VDD", "VDG", "VDI",
-    "VDN", "VDZ", "VHB", "VHD", "VHG", "VHI", "VHN", "VHZ", "VM0", "VVB", "VVB-NN1", "VVD",
-    "VVD-AJ0", "VVD-VVN", "VVG", "VVG-AJ0", "VVG-NN1", "VVI", "VVN", "VVN-AJ0", "VVN-VVD", "VVZ",
-    "VVZ-NN2", "XX0", "ZZ0"
-];
-
-version(allparser)
-{
-
-struct BncPosReader
-{
-    import dxml.parser : EntityRange, simpleXML, parseXML, EntityType;
-
-    static immutable fileType = ".xml";
-    enum fileFormat = FileFormat.bncPOS;
-    static immutable tagSet = bncC5Tags;
-
-    this(string content)
-    {
-        parse = parseXML!simpleXML(content);
-        pairs = joiner(bySegment());
-    }
-
-    Pair front()
-    {
-        return pairs.front;
-    }
-
-    void popFront()
-    {
-        pairs.popFront();
-    }
-
-    bool empty()
-    {
-        return pairs.empty;
-    }
-
-    SegmentRange bySegment()
-    {
-        return SegmentRange(parse);
-    }
-
-    struct SegmentRange
-    {
-        WordTagRange front()
-        {
-            return WordTagRange(range);
-        }
-
-        void popFront()
-        {
-            if (range.empty)
-                return;
-            range.popFront();
-            for (auto entity = range.front; !range.empty; range.popFront(), entity = range.front)
-                if (entity.type == EntityType.elementStart && entity.name == "s")
-                    break;
-            if (!range.empty)
-                range.popFront();
-        }
-
-        bool empty()
-        {
-            return range.empty;
-        }
-
-    private:
-        this(EntityRange!(simpleXML, string) file)
-        {
-            range = file;
-            popFront();
-        }
-
-        EntityRange!(simpleXML, string) range = void;
-    }
-
-    struct WordTagRange
-    {
-        Pair front()
-        {
-            return wordTag;
-        }
-
-        void popFront()
-        {
-            import std.string : stripRight;
-            import std.algorithm : find;
-
-            for (auto entity = range.front; !range.empty && !(entity.type == EntityType.elementEnd && entity.name == "s");
-                    range.popFront(), entity = range.front)
-            {
-                if (entity.type == EntityType.elementStart)
-                {
-                    auto attr = entity.attributes.find!((a, b) => a.name == b)("c5");
-                    if (!attr.empty)
-                        wordTag.tag = attr.front.value.stripRight();
-                }
-                else if (entity.type == EntityType.text)
-                {
-                    wordTag.word = entity.text.stripRight();
-                    range.popFront();
-                    if (wordTag.tag.length && wordTag.word.length)
-                        return;
-                }
-            }
-            empty = true;
-        }
-
-        bool empty;
-
-    private:
-        this(EntityRange!(simpleXML, string) segment)
-        {
-            range = segment;
-            popFront();
-        }
-
-        EntityRange!(simpleXML, string) range = void;
-        Pair wordTag;
-    }
-
-private:
-    EntityRange!(simpleXML, string) parse = void;
-    typeof(joiner(bySegment())) pairs = void;
-}
-}
-private static immutable ptbPosGrammar = r"
-PtbPos:
-    File     <  :(!SentDiv .)* (SentDiv* Sentence SentDiv*)+
-	SentDiv  <- :('===' '='+)
-    Sentence <  (WordTag / :'[' WordTag+ :']')+
-	WordTag  <  ;Word :'/' ;Tag
-    Word     <~ Char+
-	Tag      <~ Char+
-	Char     <~ (:backslash '/')
-	          / (!('/' / ' ' / '\t' / '\r' / '\n') .)
-";
-
-static immutable string[] ptbPosTags = [
-    "#", "$", "``", "''", "(", ")", ",", ".", ":", "CC", "CD", "DT", "EX", "FW", "IN", "JJ", "JJR",
-    "JJS", "LS", "MD", "NN", "NNP", "NNPS", "NNS", "PDT", "POS", "PRP", "PRP$", "RB", "RBR", "RBS",
-    "RP", "SYM", "TO", "UH", "VB", "VBD", "VBG", "VBN", "VBP", "VBZ", "WDT", "WP", "WP$", "WRB"
-];
-
-version(allparser)
-{
-struct PtbPosReader
-{
-    import seqtagsim.reader.grammar.ptb : PtbPos, ParseTree;
-    import std.algorithm : countUntil;
-    import std.utf : byCodeUnit;
-
-    this(string content)
-    {
-        auto parse = PtbPos(content);
-        if (parse.successful)
-        {
-            file = parse.children[0];
-            pairs = joiner(bySentence);
-        }
-        else
-            throw new Exception("Error parsing file contents!");
-    }
-
-@safe @nogc nothrow:
-
-    static immutable fileType = ".pos";
-    enum fileFormat = FileFormat.ptbPOS;
-    static immutable tagSet = ptbPosTags;
-
-    Pair front()
-    {
-        return pairs.front;
-    }
-
-    void popFront()
-    {
-        pairs.popFront();
-    }
-
-    bool empty()
-    {
-        return pairs.empty;
-    }
-
-    SentenceRange bySentence()
-    {
-        return SentenceRange(file);
-    }
-
-    alias bySegment = bySentence;
-
-    struct WordTagRange
-    {
-    @safe @nogc nothrow:
-        Pair front()
-        {
-            return pair;
-        }
-
-        void popFront()
-        {
-            wordTags = wordTags[1 .. $];
-            buildFront();
-        }
-
-        bool empty()
-        {
-            return pair == Pair.init;
-        }
-
-    private:
-        ParseTree[] wordTags;
-        Pair pair;
-
-        this(ParseTree sentence)
-        {
-            wordTags = sentence.children;
-            buildFront();
-        }
-
-        void buildFront()
-        {
-            if (wordTags.length == 0)
-            {
-                pair = Pair.init;
-                return;
-            }
-            string word = wordTags[0].matches[0];
-            string tags = wordTags[0].matches[1];
-            size_t l = tags.byCodeUnit.countUntil('|');
-            string tag = tags[0 .. l != -1 ? l : $];
-            tag = tag == "JJSS" || tag == "PRP$R" ? tag[0 .. $ - 1] : tag;
-            pair = Pair(word, tag);
-        }
-    }
-
-    struct SentenceRange
-    {
-    @safe @nogc nothrow:
-        WordTagRange front()
-        {
-            return WordTagRange(sentences[0]);
-        }
-
-        void popFront()
-        {
-            sentences = sentences[1 .. $];
-        }
-
-        bool empty()
-        {
-            return sentences.length == 0;
-        }
-
-    private:
-        ParseTree[] sentences;
-
-        this(ParseTree file)
-        {
-            sentences = file.children;
-        }
-    }
-
-private:
-    typeof(joiner(bySentence())) pairs;
-    ParseTree file;
-}
-}
-
+/// Reads POS tags from Groningen meaning bank .tags files
 @extends!GenericTsvReader struct GmbPosReader
 {
 @safe @nogc nothrow:
@@ -627,6 +344,7 @@ private:
     }
 }
 
+/// Reads NER tags from Groningen meaning bank .tags files
 @extends!GenericTsvReader struct GmbNerReader
 {
 @safe @nogc nothrow:
@@ -647,23 +365,27 @@ private:
         if (tag.length < 3)
             return tag;
         const string mainTag = tag[0 .. 3];
-        if (prev.length >=3 && prev[$-3 .. $] == mainTag)
-            switch(mainTag)
-            {
-                static foreach(t; iTags)
-                    case t[2 .. $]: return t;
-                default: assert(0, "tag not recognized");
-            }
+        if (prev.length >= 3 && prev[$ - 3 .. $] == mainTag) switch (mainTag)
+        {
+            static foreach (t; iTags)
+        case t[2 .. $]:
+                return t;
+        default:
+            assert(0, "tag not recognized");
+        }
         else
-            switch(mainTag)
-            {
-                static foreach(t; bTags)
-                    case t[2 .. $]: return t;
-                default: assert(0, "tag not recognized");
-            }
+            switch (mainTag)
+        {
+            static foreach (t; bTags)
+        case t[2 .. $]:
+                return t;
+        default:
+            assert(0, "tag not recognized");
+        }
     }
 }
 
+/// Reads NER tags from WikiGold .txt files
 @extends!GenericTsvReader struct WikiGoldNerReader
 {
 @safe @nogc nothrow:
@@ -682,17 +404,20 @@ private:
     {
         if (tag.length < 5)
             return tag;
-        if (prev.length > 3 && tag[2 .. $] == prev[$-3 .. $])
+        if (prev.length > 3 && tag[2 .. $] == prev[$ - 3 .. $])
             return tag;
-        switch(tag[2 .. $])
+        switch (tag[2 .. $])
         {
-            static foreach(b; bTags)
-                case b[2 ..  $]: return b;
-            default: assert(0, "tag not recognized");
+            static foreach (b; bTags)
+        case b[2 .. $]:
+                return b;
+        default:
+            assert(0, "tag not recognized");
         }
     }
 }
 
+/// Reads NER tags from SEC Filings .secner files
 @extends!GenericTsvReader struct SecNerReader
 {
 @safe @nogc nothrow:
@@ -709,6 +434,7 @@ private:
 
 }
 
+/// Reads NER tags from GermEval 2014 Named Entity Recognition Shared Task .tsv files
 @extends!GenericTsvReader struct GermanNerReader
 {
 @safe @nogc nothrow:
@@ -723,6 +449,7 @@ private:
     }
 }
 
+/// Reads NER tags from WNUT'17 files in CoNLL format
 @extends!GenericTsvReader struct WnutConllReader
 {
 @safe @nogc nothrow:
@@ -737,6 +464,7 @@ private:
     }
 }
 
+/// Reads NER tags from OntoNotes 5 files in CoNLL format
 @extends!GenericTsvReader struct OntonotesConllNerReader
 {
 @safe @nogc nothrow:
@@ -751,6 +479,7 @@ private:
     }
 }
 
+/// Reads POS tags from OntoNotes 5 files in CoNLL format
 @extends!GenericTsvReader struct OntonotesConllPosReader
 {
 @safe @nogc nothrow:
@@ -765,6 +494,7 @@ private:
     }
 }
 
+/// Reads NER tags from EuroParl files in CoNLL format
 @extends!GenericTsvReader struct EpConllNerReader
 {
 @safe @nogc nothrow:
@@ -780,24 +510,31 @@ private:
         base = GenericTsvReader(content, Config(0, 4, ' ', &convertTag));
     }
 
-    static string convertTag(string tag, string prev) pure {
+    static string convertTag(string tag, string prev) pure
+    {
         if (tag.length < 3)
             return tag;
         if (prev.length > 2 && tag == prev[2 .. $]) switch (tag)
         {
-            static foreach(i; iTags)
-                case i[2 ..  $]: return i;
-            default: assert(0, "tag not recognized");
+            static foreach (i; iTags)
+        case i[2 .. $]:
+                return i;
+        default:
+            assert(0, "tag not recognized");
         }
-        else switch (tag)
+        else
+            switch (tag)
         {
-            static foreach(b; bTags)
-                case b[2 ..  $]: return b;
-            default: assert(0, "tag not recognized");
+            static foreach (b; bTags)
+        case b[2 .. $]:
+                return b;
+        default:
+            assert(0, "tag not recognized");
         }
     }
 }
 
+/// Reads NER tags from English CoNLL'03 .conll files
 @extends!GenericTsvReader struct ConllNerReader
 {
 @safe @nogc nothrow:
@@ -812,6 +549,7 @@ private:
     }
 }
 
+/// Reads NER tags from German CoNLL'03 .conllger files
 @extends!GenericTsvReader struct ConllGerNerReader
 {
 @safe @nogc nothrow:
@@ -824,27 +562,32 @@ private:
 
     this(string content)
     {
-        base = GenericTsvReader(content[26 ..$], Config(0, 4, ' ', &convertTag));
+        base = GenericTsvReader(content[26 .. $], Config(0, 4, ' ', &convertTag));
     }
 
     static string convertTag(string tag, string prev) pure
     {
-        if (tag[0] == 'B') switch (tag[2..$])
+        if (tag[0] == 'B') switch (tag[2 .. $])
         {
-            static foreach(i; iTags)
-                case i[2 ..  $]: return i;
-            default: assert(0, "tag not recognized");
+            static foreach (i; iTags)
+        case i[2 .. $]:
+                return i;
+        default:
+            assert(0, "tag not recognized");
         }
-        else if (tag[0] == 'I') switch (tag[2..$])
+        else if (tag[0] == 'I') switch (tag[2 .. $])
         {
-            static foreach(b; bTags)
-                case b[2 ..  $]: return b;
-            default: assert(0, "tag not recognized");
+            static foreach (b; bTags)
+        case b[2 .. $]:
+                return b;
+        default:
+            assert(0, "tag not recognized");
         }
         return tag;
     }
 }
 
+/// Reads POS tags from Universal Dependencies .conllu files
 @extends!GenericTsvReader struct UdPosReader
 {
 @safe @nogc nothrow:
@@ -852,7 +595,6 @@ private:
 
     static immutable fileType = ".conllu";
     enum fileFormat = FileFormat.udPOS;
-    static immutable tagSet = udPosTags;
 
     this(string content)
     {
@@ -861,15 +603,11 @@ private:
 
     static string convertTag(string tag, string prev) pure
     {
-        return tag == "_" ? udPosTags[$ - 1] : tag;
+        return tag == "_" ? "X" : tag;
     }
 }
 
-static immutable string[] udPosTags = [
-    "ADJ", "ADP", "ADV", "AUX", "CCONJ", "DET", "INTJ", "NOUN", "NUM", "PART", "PRON", "PROPN",
-    "PUNCT", "SCONJ", "SYM", "VERB", "X"
-];
-
+/// Base for all readers processing TSV-like text data
 struct GenericTsvReader
 {
     import std.algorithm : splitter, skipOver, filter;
@@ -997,6 +735,261 @@ private:
         int wordColumn;
         int labelColumn;
         char fieldSep = '\t';
-        string function(string, string) @nogc nothrow pure tagMapping = (a,b) => a;
+        string function(string, string) @nogc nothrow pure tagMapping = (a, b) => a;
     }
+}
+
+version (allparser): 
+
+/// Reads POS tags from BNC
+struct BncPosReader
+{
+    import dxml.parser : EntityRange, simpleXML, parseXML, EntityType;
+
+    static immutable fileType = ".xml";
+    enum fileFormat = FileFormat.bncPOS;
+
+    this(string content)
+    {
+        parse = parseXML!simpleXML(content);
+        pairs = joiner(bySegment());
+    }
+
+    Pair front()
+    {
+        return pairs.front;
+    }
+
+    void popFront()
+    {
+        pairs.popFront();
+    }
+
+    bool empty()
+    {
+        return pairs.empty;
+    }
+
+    SegmentRange bySegment()
+    {
+        return SegmentRange(parse);
+    }
+
+    struct SegmentRange
+    {
+        WordTagRange front()
+        {
+            return WordTagRange(range);
+        }
+
+        void popFront()
+        {
+            if (range.empty)
+                return;
+            range.popFront();
+            for (auto entity = range.front; !range.empty; range.popFront(), entity = range.front)
+                if (entity.type == EntityType.elementStart && entity.name == "s")
+                    break;
+            if (!range.empty)
+                range.popFront();
+        }
+
+        bool empty()
+        {
+            return range.empty;
+        }
+
+    private:
+        this(EntityRange!(simpleXML, string) file)
+        {
+            range = file;
+            popFront();
+        }
+
+        EntityRange!(simpleXML, string) range = void;
+    }
+
+    struct WordTagRange
+    {
+        Pair front()
+        {
+            return wordTag;
+        }
+
+        void popFront()
+        {
+            import std.string : stripRight;
+            import std.algorithm : find;
+
+            for (auto entity = range.front; !range.empty && !(entity.type == EntityType.elementEnd && entity.name == "s");
+                    range.popFront(), entity = range.front)
+            {
+                if (entity.type == EntityType.elementStart)
+                {
+                    auto attr = entity.attributes.find!((a, b) => a.name == b)("c5");
+                    if (!attr.empty)
+                        wordTag.tag = attr.front.value.stripRight();
+                }
+                else if (entity.type == EntityType.text)
+                {
+                    wordTag.word = entity.text.stripRight();
+                    range.popFront();
+                    if (wordTag.tag.length && wordTag.word.length)
+                        return;
+                }
+            }
+            empty = true;
+        }
+
+        bool empty;
+
+    private:
+        this(EntityRange!(simpleXML, string) segment)
+        {
+            range = segment;
+            popFront();
+        }
+
+        EntityRange!(simpleXML, string) range = void;
+        Pair wordTag;
+    }
+
+private:
+    EntityRange!(simpleXML, string) parse = void;
+    typeof(joiner(bySegment())) pairs = void;
+}
+
+private static immutable ptbPosGrammar = r"
+PtbPos:
+    File     <  :(!SentDiv .)* (SentDiv* Sentence SentDiv*)+
+	SentDiv  <- :('===' '='+)
+    Sentence <  (WordTag / :'[' WordTag+ :']')+
+	WordTag  <  ;Word :'/' ;Tag
+    Word     <~ Char+
+	Tag      <~ Char+
+	Char     <~ (:backslash '/')
+	          / (!('/' / ' ' / '\t' / '\r' / '\n') .)
+";
+
+/// Reads POS tags from Penn Treebank .pos files
+struct PtbPosReader
+{
+    import seqtagsim.reader.grammar.ptb : PtbPos, ParseTree;
+    import std.algorithm : countUntil;
+    import std.utf : byCodeUnit;
+
+    this(string content)
+    {
+        auto parse = PtbPos(content);
+        if (parse.successful)
+        {
+            file = parse.children[0];
+            pairs = joiner(bySentence);
+        }
+        else
+            throw new Exception("Error parsing file contents!");
+    }
+
+@safe @nogc nothrow:
+
+    static immutable fileType = ".pos";
+    enum fileFormat = FileFormat.ptbPOS;
+
+    Pair front()
+    {
+        return pairs.front;
+    }
+
+    void popFront()
+    {
+        pairs.popFront();
+    }
+
+    bool empty()
+    {
+        return pairs.empty;
+    }
+
+    SentenceRange bySentence()
+    {
+        return SentenceRange(file);
+    }
+
+    alias bySegment = bySentence;
+
+    struct WordTagRange
+    {
+    @safe @nogc nothrow:
+        Pair front()
+        {
+            return pair;
+        }
+
+        void popFront()
+        {
+            wordTags = wordTags[1 .. $];
+            buildFront();
+        }
+
+        bool empty()
+        {
+            return pair == Pair.init;
+        }
+
+    private:
+        ParseTree[] wordTags;
+        Pair pair;
+
+        this(ParseTree sentence)
+        {
+            wordTags = sentence.children;
+            buildFront();
+        }
+
+        void buildFront()
+        {
+            if (wordTags.length == 0)
+            {
+                pair = Pair.init;
+                return;
+            }
+            string word = wordTags[0].matches[0];
+            string tags = wordTags[0].matches[1];
+            size_t l = tags.byCodeUnit.countUntil('|');
+            string tag = tags[0 .. l != -1 ? l : $];
+            tag = tag == "JJSS" || tag == "PRP$R" ? tag[0 .. $ - 1] : tag;
+            pair = Pair(word, tag);
+        }
+    }
+
+    struct SentenceRange
+    {
+    @safe @nogc nothrow:
+        WordTagRange front()
+        {
+            return WordTagRange(sentences[0]);
+        }
+
+        void popFront()
+        {
+            sentences = sentences[1 .. $];
+        }
+
+        bool empty()
+        {
+            return sentences.length == 0;
+        }
+
+    private:
+        ParseTree[] sentences;
+
+        this(ParseTree file)
+        {
+            sentences = file.children;
+        }
+    }
+
+private:
+    typeof(joiner(bySentence())) pairs;
+    ParseTree file;
 }

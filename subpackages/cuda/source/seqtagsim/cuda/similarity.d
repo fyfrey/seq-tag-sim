@@ -18,20 +18,7 @@ import mir.ndslice;
 
 import seqtagsim.cuda.cublas;
 
-extern (C) void max_idx_all(const float* device_results, const uint rows, const uint columns, float* device_maxima,
-        cudaStream_t stream = null);
-extern (C) void max_idx_t(const float* device_results, const uint rows, const uint columns, float* device_maxima,
-        const uint offset, const bool overwrite, cudaStream_t stream = null);
-
-private void checkError(int status, string file = __FILE__, int line = __LINE__)
-{
-    import std.string : fromStringz;
-    import std.exception : assumeUnique;
-
-    if (status != 0)
-        throw new CudaException(assumeUnique(fromStringz(cudaGetErrorString(status))), file, line);
-}
-
+/// Exception indicates an error occured during CUDA operations
 final class CudaException : Exception
 {
     @nogc @safe pure nothrow this(string msg, string file = __FILE__, size_t line = __LINE__, Throwable nextInChain = null)
@@ -40,6 +27,7 @@ final class CudaException : Exception
     }
 }
 
+/// Finds the most similar indices according to their cosine similarity for two huge matrices in a batched manner 
 void findMaxSimilarBatched(scope Slice!(const(float)*, 2) embeddings, scope Slice!(const(float)*, 2) otherEmbeddings,
         void delegate(size_t, Tuple!(float, uint)[]) callback, void delegate(Tuple!(float, uint)[]) callbackOther,
         const size_t maxBytes = size_t.max)
@@ -62,6 +50,22 @@ void findMaxSimilarBatched(scope Slice!(const(float)*, 2) embeddings, scope Slic
     }
     catch (CudaException ce)
         stderr.writeln("Error during CUDA: '", ce.msg, "' in ", ce.file, ":", ce.line, "\nUsing fallback mechanism...");
+}
+
+private:
+
+extern (C) void max_idx_all(const float* device_results, const uint rows, const uint columns, float* device_maxima,
+        cudaStream_t stream = null);
+extern (C) void max_idx_t(const float* device_results, const uint rows, const uint columns, float* device_maxima,
+        const uint offset, const bool overwrite, cudaStream_t stream = null);
+
+void checkError(int status, string file = __FILE__, int line = __LINE__)
+{
+    import std.string : fromStringz;
+    import std.exception : assumeUnique;
+
+    if (status != 0)
+        throw new CudaException(assumeUnique(fromStringz(cudaGetErrorString(status))), file, line);
 }
 
 unittest
@@ -426,7 +430,7 @@ private:
         cudaMemcpyAsync(maxIndex.ptr, deviceIndex[device] + idx, maxIndex.length * maxIndex[0].sizeof,
                 cudaMemcpyDeviceToHost, stream[device]).checkError;
         max_idx_t(deviceResult[device], cast(uint) length, cast(uint) maxIndex.length,
-                cast(float*)(deviceIndexOther[device]), cast(uint) (globalOffset + idx), idx == 0, stream[device]);
+                cast(float*)(deviceIndexOther[device]), cast(uint)(globalOffset + idx), idx == 0, stream[device]);
         cudaEventRecord(done, stream[device]).checkError;
         return done;
     }

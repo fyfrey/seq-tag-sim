@@ -36,6 +36,13 @@ struct Dataset(Embedding : EmbeddingBase)
 {
     alias Label = Tuple!(uint, "id", uint, "count");
 
+    /**
+     * Creates a new instance.
+     *
+     * Params:
+     *     emb = Contextual embeddings to use
+     *     config = Configuration options
+     */
     this(ref Embedding emb, const DatasetConfig config = DatasetConfig.init)
     {
         this.emb = &emb;
@@ -89,7 +96,7 @@ struct Dataset(Embedding : EmbeddingBase)
                 }
                 l.count++;
                 tokens ~= copy(word);
-                labels ~= cast(ubyte) l.id;
+                labels ~= l.id;
                 if (config.splitSentences && word.length == 1 && (word[0] == '.' || word[0] == '!' || word[0] == '?'))
                 {
                     sentences ~= [cast(uint) tokensPriorSentence, cast(uint) tokens.length].staticArray;
@@ -189,8 +196,8 @@ struct Dataset(Embedding : EmbeddingBase)
         };
 
         auto matrixFillCallback = (size_t idx, Tuple!(float, uint)[] batch) {
-            const ubyte[] thisLabels = labels.data;
-            const ubyte[] otherLabels = other.labels.data;
+            const uint[] thisLabels = labels.data;
+            const uint[] otherLabels = other.labels.data;
             foreach (size_t i, Tuple!(float, uint) pair; batch)
             {
                 immutable tagId = thisLabels[idx + i];
@@ -211,8 +218,8 @@ struct Dataset(Embedding : EmbeddingBase)
         };
 
         auto matrixFillCallbackOther = (Tuple!(float, uint)[] batch) {
-            const ubyte[] thisLabels = labels.data;
-            const ubyte[] otherLabels = other.labels.data;
+            const uint[] thisLabels = labels.data;
+            const uint[] otherLabels = other.labels.data;
             foreach (size_t i, Tuple!(float, uint) pair; batch)
             {
                 immutable tagId = otherLabels[i];
@@ -265,16 +272,17 @@ struct Dataset(Embedding : EmbeddingBase)
                     matrixOther.lightScope, weightedMatrixOther.lightScope, unmatchedTokenCountOther);
         }
 
-        stderr.writeln("Filling matrix counts ms: ", progress.peek.total!"msecs");
+        stderr.writeln("Filling matrix counts took ", progress.peek.total!"msecs", " ms");
         writefln!"Unmatched tokens: %d / %.1f %%"(unmatchedTokenCountThis, 100.0 * unmatchedTokenCountThis / labels.length);
 
         return tuple!("contextAB", "weightedAB", "contextBA", "weightedBA", "fusedAB", "fusedWeightedAB", "fusedBA", "fusedWeightedBA")(
-                matrix, weightedMatrix, matrixOther, weightedMatrixOther, fusedMatrix, fusedWeightedMatrix, fusedMatrixOther, fusedWeightedMatrixOther);
+                matrix, weightedMatrix,
+                matrixOther, weightedMatrixOther, fusedMatrix, fusedWeightedMatrix, fusedMatrixOther, fusedWeightedMatrixOther);
     }
 
 private:
     HashMap!(string, Label, Mallocator, false) labelMap;
-    OutputBuffer!(ubyte, Mallocator) labels;
+    OutputBuffer!(uint, Mallocator) labels;
     Embedding* emb;
     Slice!(float*, 2) embeddings;
     Slice!(float*) fuseCounts;
@@ -294,14 +302,14 @@ private:
     }
 
     void fallbackComputation(ref Progress progress, ref Slice!(float*, 2) thisEmb, ref Slice!(float*, 2) otherEmb,
-            ubyte[] thisLabels, ubyte[] otherLabels, scope Slice!(double*, 2) matrix, scope Slice!(double*,
+            uint[] thisLabels, uint[] otherLabels, scope Slice!(double*, 2) matrix, scope Slice!(double*,
                 2) weightedMatrix, ref ulong unmatchedTokenCount)
     {
         import std.parallelism : taskPool;
         import core.atomic : atomicOp;
 
         Atomic!ulong localUnmatchedTokenCount;
-        foreach (size_t idx, ubyte tagId; taskPool.parallel(thisLabels))
+        foreach (size_t idx, uint tagId; taskPool.parallel(thisLabels))
         {
             immutable Tuple!(float, uint) maxIdx = computeSimilarity(otherEmb, thisEmb[idx]);
             immutable similarity = maxIdx[0];
@@ -393,7 +401,7 @@ unittest
     assert(ds.embeddings.length == ds.labels.length);
 }
 
-
+/// Configuration options for the token-based approach
 struct DatasetConfig
 {
     bool splitSentences = false;

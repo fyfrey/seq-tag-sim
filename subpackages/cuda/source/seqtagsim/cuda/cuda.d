@@ -2,6 +2,8 @@
  * Copyright: Fynn Schröder, 2019
  * Author: Fynn Schröder
  * License: MIT
+ *
+ * D translation of selected parts from cuda.h and https://docs.nvidia.com/cuda/archive/10.1/cuda-runtime-api/index.html
  */
 
 module seqtagsim.cuda.cuda;

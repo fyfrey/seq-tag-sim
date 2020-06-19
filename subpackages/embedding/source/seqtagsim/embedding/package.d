@@ -10,4 +10,3 @@ public import seqtagsim.embedding.common;
 public import seqtagsim.embedding.bert;
 public import seqtagsim.embedding.elmo;
 public import seqtagsim.embedding.fasttext;
-

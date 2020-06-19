@@ -21,8 +21,8 @@
 		":util": "*",
 		"cachetools": "~>0.3.1",
 		"mir": "~>3.2.0",
-		"mir-algorithm": "~>3.4.19",
-		"silly": "~>0.8.2"
+		"mir-algorithm": "~>3.8.0",
+		"silly": "~>1.0.0"
 	},
 	"dflags": [
 		"-preview=dip25",
@@ -30,7 +30,7 @@
 		"-preview=dip1008"
 	],
 	"dflags-ldc": [
-		"-mcpu=native"
+		"--link-defaultlib-shared=false"
 	],
 	"buildTypes": {
 		"lto": {
@@ -128,12 +128,24 @@
 			}
 		},
 		{
+			"name": "blas-static-all-readers",
+			"dependencies": {
+				":blas": "*",
+				":embedding": "*"
+			},
+			"subConfigurations":{
+				"seq-tag-sim:blas": "mkl-static",
+				"seq-tag-sim:embedding": "static-manual",
+				"seq-tag-sim:reader": "more"
+			}
+		},
+		{
 			"name": "complete",
 			"dependencies": {
 				":cuda": "*",
 				":blas": "*",
 				":embedding": "*",
-				"pyd": "~>0.12.0"
+				"pyd": "~>0.13.0"
 			},
 			"subConfigurations": {
 				"seq-tag-sim:embedding": "static-manual",

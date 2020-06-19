@@ -129,7 +129,7 @@ unittest
     string dummyData = "00112233445566778899";
     put(o, dummyData);
     assert(dummyData == o.data);
-    o.remove(8,10);
+    o.remove(8, 10);
     assert(o.data == "001122335566778899");
 }
 
@@ -191,9 +191,7 @@ mixin template base()
     alias base this;
 }
 
-/**
- * Atomic wrapper for the integral types that support atomic opeartions.
- */
+/// Atomic wrapper for the integral types that support atomic opeartions.
 struct Atomic(T)
 {
     import core.atomic : atomicOp, atomicStore, atomicLoad;
@@ -232,9 +230,7 @@ unittest
     assert(a == 9);
 }
 
-/**
- * Progress monitor and printer.
- */
+/// Progress monitor and printer.
 struct Progress
 {
     import std.datetime.stopwatch : StopWatch, AutoStart;

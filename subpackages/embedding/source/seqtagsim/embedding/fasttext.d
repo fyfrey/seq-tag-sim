@@ -19,10 +19,12 @@ import std.experimental.allocator;
 import std.experimental.allocator.building_blocks.region;
 import std.experimental.allocator.mallocator;
 
+/// Provides fastText embeddings using the custom wrapper 
 @extends!EmbeddingBase struct FastTextEmbedding
 {
     mixin base;
 
+    /// Loads the fastText model from file
     void initialize(string modelFile)
     {
         alloc = Region!Mallocator(1024 * 1024);
@@ -30,11 +32,13 @@ import std.experimental.allocator.mallocator;
         ft.loadModel(modelFile);
     }
 
+    /// Returns the dimensions of a single embedding
     size_t embeddingDim()
     {
         return ft.getDimension();
     }
 
+    /// Embeds a single batch
     void embed(string[][] sentences, Slice!(float*, 2) storage)
     {
         size_t i;

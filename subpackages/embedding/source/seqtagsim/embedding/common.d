@@ -9,11 +9,7 @@ module seqtagsim.embedding.common;
 import mir.ndslice : Slice;
 import mir.glas.l1 : dot, nrm2;
 
-float cosineSimilarity(Slice!(float*) a, Slice!(float*) b)
-{
-    return dot(a, b) / (nrm2(a) * nrm2(b));
-}
-
+/// Base type for all embeddings
 struct EmbeddingBase
 {
     size_t embeddingDim();
@@ -32,4 +28,12 @@ struct EmbeddingBase
     }
 
     bool normalize;
+}
+
+version (unittest)
+{
+    float cosineSimilarity(Slice!(float*) a, Slice!(float*) b)
+    {
+        return dot(a, b) / (nrm2(a) * nrm2(b));
+    }
 }

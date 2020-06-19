@@ -14,9 +14,11 @@ version (unittest)
 {
 }
 else
-	void main(string[] args)
 {
-	processArgs(args);
+	void main(string[] args)
+	{
+		processArgs(args);
+	}
 }
 
 private void processArgs(string[] args)
@@ -41,16 +43,22 @@ private void processArgs(string[] args)
 								EnumMembers!(CompareConfig.Context)
 							]), &context, "s|similarity-threshold", "Minimal similarity [0,1] for word embeddings (default 0)", &similarityThreshold,
 						"e|embedding-location",
-						"path to fastText word vector file (in bin or ftz format with subword information) or BERT service address", &embeddings,
-						"split-sentences", "Split multi-sentence segments into single sentences for embedding compatibility (default false)", &splitSentences,
-						"fuse-spans", "Fuse same-label spans of multiple tokens to a single token for comparison (default false)", &fuseMultiTokenSpans,
+						"path to fastText word vector file (in bin or ftz format with subword information) or BERT service address",
+						&embeddings, "split-sentences",
+						"Split multi-sentence segments into single sentences for embedding compatibility (default false)",
+						&splitSentences,
+						"fuse-spans",
+						"Fuse same-label spans of multiple tokens to a single token for comparison (default false)",
+						&fuseMultiTokenSpans,
 						"intermediate-marker", "Character marking a label as an intermediate, continuing label (default I)", &iMarker);
 			else
 				auto extraOptions = tuple();
 			result = getopt(args, config.passThrough, config.keepEndOfOptions, extraOptions.expand, "f|format",
 					"File format, use twice when dataset formats differ: " ~ format!"<%(%s|%)>"([
 							EnumMembers!(FileFormat)
-						]), &formats, "p|pattern", "GLOB pattern to select files, e.g. *.txt, use twice", &patterns, "t|threads",
+						]), &formats, "d|details", "Print details for all similarity measures", &allMeasureDetails, "p|pattern",
+					"GLOB pattern to select files (mainly useful with limited shell globbing), e.g. *.txt, use twice",
+					&patterns, "t|threads",
 					"number of threads to use for parallelizable operations (defaults to the number of logical cores)", &threads);
 			args = args[1 .. $];
 			defaultPoolThreads(threads - 1);

@@ -60,6 +60,7 @@ private:
     FastTextWrapper createInstance(void*, Dstring function(void* alloc, const char*, size_t) copyString);
 }
 
+/// D struct providing access to fastText with mir-based slice API
 struct FastText(Allocator)
 {
     import std.typecons : Tuple;
@@ -132,11 +133,10 @@ struct FastText(Allocator)
         import std.traits : Unqual, CopyConstness;
 
         this.alloc = &alloc;
-        f = createInstance(cast(void*)this.alloc, &copyString2);
+        f = createInstance(cast(void*) this.alloc, &copyString2);
     }
 
-    @disable
-    this(this);
+    @disable this(this);
 
     private Allocator* alloc;
     private FastTextWrapper f = void;

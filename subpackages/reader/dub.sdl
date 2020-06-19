@@ -6,7 +6,7 @@ license "MIT"
 dependency "seq-tag-sim:util" version="*"
 configuration "default"
 configuration "more" {
-    dependency "dxml" version="~>0.4.0"
+    dependency "dxml" version="~>0.4.3"
     dependency "pegged" version="~>0.4.4"
     versions "allparser"
 }

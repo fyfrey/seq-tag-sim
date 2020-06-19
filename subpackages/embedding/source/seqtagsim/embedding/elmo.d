@@ -7,7 +7,6 @@
 module seqtagsim.embedding.elmo;
 
 version (python):
-
 import seqtagsim.embedding.common;
 import seqtagsim.util;
 
@@ -17,18 +16,21 @@ import pyd.pyd;
 import pyd.embedded;
 import pyd.extra;
 
+/// Provides access to AllenNLP's ELMo Python library via pyd 
 @extends!EmbeddingBase struct ElmoEmbedding
 {
     mixin base;
 
     enum embeddingDim = 1024;
 
+    /// Initializes the embeddings by creating an instance in Python
     void initialize(string dummy)
     {
         python = new InterpContext();
         python.py_stmts("from allennlp.commands.elmo import ElmoEmbedder\nelmo = ElmoEmbedder()\n");
     }
 
+    /// Embeds a single batch
     void embed(string[][] sentences, Slice!(float*, 2) storage)
     {
         python.sentences = sentences;

@@ -9,23 +9,25 @@ module seqtagsim.embedding.bert;
 import seqtagsim.embedding.common;
 import seqtagsim.util;
 
+import asdf;
+import deimos.zmq.zmq;
 import mir.ndslice;
 import mir.glas.l1;
-import asdf;
 import zmqd;
-import deimos.zmq.zmq;
+
+import core.time;
 import std.uuid;
 import std.experimental.allocator;
 import std.experimental.allocator.building_blocks.region;
 import std.experimental.allocator.mallocator;
 import std.typecons;
 import std.parallelism;
-import core.time;
 import std.conv;
 import std.format;
 import std.algorithm : fold, max, stdMap = map, maxElement;
 import std.stdio;
 
+/// D client to access bert-as-service (https://github.com/hanxiao/bert-as-service)
 @extends!EmbeddingBase struct BertEmbedding
 {
     mixin base;
@@ -33,12 +35,14 @@ import std.stdio;
     @disable this(this);
     __gshared size_t embeddingDim;
 
+    /// Creates a new instance with the given settings
     this(bool showTokensToClient, Duration timeout)
     {
         this.showTokensToClient = showTokensToClient;
         this.timeout = timeout;
     }
 
+    /// Initializes the connection to the server
     void initialize(string serverAddress = null)
     {
         serverAddress = serverAddress == null ? "localhost" : serverAddress;
@@ -82,16 +86,17 @@ import std.stdio;
         obtainEmbeddingDimension();
     }
 
+    /// Starts the embedding processing for the provided number of batches
     void beginEmbedding(size_t numberOfBatches, bool normalize = true, void delegate(size_t, size_t) progressCallback = null)
     {
         openRequests = makeArray!RequestData(Mallocator.instance, numberOfBatches);
         idOffset = requestId;
-        receiverTask = scopedTask((size_t a, bool n, void delegate(size_t, size_t) b) {
-            receiveAll(a, n, b);
-        }, numberOfBatches, normalize, progressCallback);
+        receiverTask = scopedTask((size_t a, bool n, void delegate(size_t, size_t) b) { receiveAll(a, n, b); },
+                numberOfBatches, normalize, progressCallback);
         taskPool.put(receiverTask);
     }
 
+    /// Embeds a single batch asynchronously
     void embed(string[][] sentences, Slice!(float*, 2) storage)
     {
         assert(storage.length!1 == embeddingDim);
@@ -100,6 +105,7 @@ import std.stdio;
         send(sentences);
     }
 
+    /// Waits for the asynchronous embedding processing to complete
     void endEmbedding()
     {
         receiverTask.yieldForce();
@@ -135,7 +141,7 @@ private:
 
     void receiveAll(size_t numberOfBatches, bool normalize, void delegate(size_t, size_t) progressCallback)
     {
-        foreach(i; 1 .. numberOfBatches + 1)
+        foreach (i; 1 .. numberOfBatches + 1)
         {
             receiveEmbeddings(normalize);
             progressCallback(i, numberOfBatches);
@@ -151,7 +157,8 @@ private:
             size_t[] sentenceLengths = openRequests[receivedId - idOffset][0];
             Slice!(float*, 2, Contiguous) storage = openRequests[receivedId - idOffset][1];
             immutable seqLen = maxSeqLen ? maxSeqLen : sentenceLengths.maxElement + 2;
-            assert(embeddings.shape == [sentenceLengths.length, seqLen, embeddingDim], format!"%s != %s"(embeddings.shape, [sentenceLengths.length, seqLen, embeddingDim]));
+            assert(embeddings.shape == [sentenceLengths.length, seqLen, embeddingDim],
+                    format!"%s != %s"(embeddings.shape, [sentenceLengths.length, seqLen, embeddingDim]));
 
             size_t i;
             if (normalize)
@@ -216,10 +223,11 @@ unittest
         ["I", "'m", "not", "sure", "how", "I", "would", "have", "handled", "it", "."],
         ["I", "had", "a", "problem", "with", "the", "tile", "in", "my", "bathroom", "coming", "apart", "."]
     ];
-    size_t tokens = sentences.stdMap!(s => s.length).fold!( (a,b) => a + b)(0UL);
+    size_t tokens = sentences.stdMap!(s => s.length)
+        .fold!((a, b) => a + b)(0UL);
     auto wordEmbeddings = slice!float(tokens, BertEmbedding.embeddingDim);
     stderr.write("Fetching word embeddings for ", tokens, " tokens...");
-    bert.beginEmbedding(1, true, (a,b) => stderr.writeln(a," ",b));
+    bert.beginEmbedding(1, true, (a, b) => stderr.writeln(a, " ", b));
     bert.embed(sentences, wordEmbeddings);
     bert.endEmbedding();
     stderr.writeln("Done!");

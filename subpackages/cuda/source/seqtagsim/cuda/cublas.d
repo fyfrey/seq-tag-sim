@@ -2,6 +2,8 @@
  * Copyright: Fynn Schröder, 2019
  * Author: Fynn Schröder
  * License: MIT
+ *
+ * D translation of selected parts from https://docs.nvidia.com/cuda/archive/10.1/cublas/index.html
  */
 
 module seqtagsim.cuda.cublas;
@@ -37,6 +39,5 @@ alias cublasHandle_t = void*;
 cublasStatus_t cublasCreate_v2(cublasHandle_t* handle);
 cublasStatus_t cublasDestroy_v2(cublasHandle_t handle);
 cublasStatus_t cublasSetStream_v2(cublasHandle_t handle, cudaStream_t streamId);
-cublasStatus_t cublasSgemm_v2(cublasHandle_t handle, cublasOperation_t transa,
-        cublasOperation_t transb, int m, int n, int k, const float* alpha,
-        const float* A, int lda, const float* B, int ldb, const float* beta, float* C, int ldc);
+cublasStatus_t cublasSgemm_v2(cublasHandle_t handle, cublasOperation_t transa, cublasOperation_t transb, int m, int n, int k,
+        const float* alpha, const float* A, int lda, const float* B, int ldb, const float* beta, float* C, int ldc);

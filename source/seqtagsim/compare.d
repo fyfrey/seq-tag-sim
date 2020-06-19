@@ -34,6 +34,7 @@ struct CompareConfig
 	string[] dataset2Paths;
 	FileFormat fileFormat1 = FileFormat.deduce;
 	FileFormat fileFormat2 = FileFormat.deduce;
+	bool allMeasureDetails;
 
 	version (embedding)
 	{
@@ -115,8 +116,14 @@ void compare(Type, Embedding, Options)(const ref CompareConfig config, const Opt
 			config.patterns.length ? config.patterns[0] : null).array;
 	auto files2 = config.dataset2Paths.length > 1 ? config.dataset2Paths : listFiles(config.dataset2Paths[0],
 			config.patterns.length ? config.patterns[1] : null).array;
-	auto task1 = scopedTask({ files1.each!(f => processByFilename!(d1.read)(f, config.fileFormat1, d1)); d1.endReading(); });
-	auto task2 = scopedTask({ files2.each!(f => processByFilename!(d2.read)(f, config.fileFormat2, d2)); d2.endReading(); });
+	auto task1 = scopedTask({
+		files1.each!(f => processByFilename!(d1.read)(f, config.fileFormat1, d1));
+		d1.endReading();
+	});
+	auto task2 = scopedTask({
+		files2.each!(f => processByFilename!(d2.read)(f, config.fileFormat2, d2));
+		d2.endReading();
+	});
 	taskPool.put(task1);
 	taskPool.put(task2);
 
@@ -134,18 +141,76 @@ void compare(Type, Embedding, Options)(const ref CompareConfig config, const Opt
 	d2.beginEmbedding();
 	stderr.writefln!"Preparing dataset 2 took %s ms"(sw.peek.total!"msecs");
 	sw.reset();
-	writeln("Comparing dataset A against dataset B");
 	auto result = d1.compare(d2);
-	writeln("TagsA: ", result[0].length);
-	writeln("TagsB: ", result[0].length!1);
-	foreach (i, name; result.fieldNames)
-	{
-		writeln("\nResults for ", name, ":");
-		computeInformationTheoreticMeasuresFromMatrix(result[i].lightScope).prettyPrintStruct;
-	}
+	writeln("Tags A: ", result[0].length);
+	writeln("Tags B: ", result[0].length!1);
+
+	static if (is(typeof(result[$ - 1]) == double))
+		printTextOverlapScores(config.allMeasureDetails, result);
+	else
+		printUnifiedUndirectionalEmbeddingScores(config.allMeasureDetails, config.fuseMultiTokenSpans, result);
+
 	stderr.writefln!"\nComparing datasets took %s ms"(sw.peek.total!"msecs");
 	stderr.flush();
 	stdout.flush();
+}
+
+void printTextOverlapScores(R)(bool showDetails, ref R result)
+{
+	if (showDetails)
+	{
+		foreach (i, name; result.fieldNames[0 .. $ - 2])
+		{
+			writeln("\nResults for method ", name, ":");
+			computeInformationTheoreticMeasuresFromMatrix(result[i].lightScope).prettyPrintStruct;
+		}
+		writeln();
+	}
+	writefln("Shared tokens: %.3f", result.sharedTokens);
+	writefln("Shared vocabulary: %.3f", result.sharedVocabulary);
+	const double nmiJointMul = computeInformationTheoreticMeasuresFromMatrix(result.mulIwf.lightScope).normalizedMutualInformationJoint;
+	const double nmiJointAdd = computeInformationTheoreticMeasuresFromMatrix(result.addIwf.lightScope).normalizedMutualInformationJoint;
+	writefln("NMI Joint (multiplicative): %.3f", nmiJointMul);
+	writefln("NMI Joint (additive): %.3f", nmiJointAdd);
+
+	const double textOverlapMul = (2.0 * nmiJointMul * result.sharedVocabulary) / (nmiJointMul + result.sharedVocabulary);
+	const double textOverlapAdd = (2.0 * nmiJointAdd * result.sharedVocabulary) / (nmiJointAdd + result.sharedVocabulary);
+	writefln("Text Overlap (multiplicative): %.3f", textOverlapMul);
+	writefln("Text Overlap (additive): %.3f", textOverlapAdd);
+}
+
+void printUnifiedUndirectionalEmbeddingScores(R)(bool showDetails, bool fused, ref R result)
+{
+	if (showDetails)
+	{
+		if (fused)
+			foreach (i, name; result.fieldNames[$ / 2 .. $])
+			{
+				writeln("\nResults for method ", name, ":");
+				computeInformationTheoreticMeasuresFromMatrix(result[$ / 2 + i].lightScope).prettyPrintStruct;
+			}
+		else
+			foreach (i, name; result.fieldNames[0 .. $ / 2])
+			{
+				writeln("\nResults for method ", name, ":");
+				computeInformationTheoreticMeasuresFromMatrix(result[i].lightScope).prettyPrintStruct;
+			}
+		writeln();
+	}
+
+	double nmiJointAB, nmiJointBA;
+	if (fused)
+	{
+		nmiJointAB = computeInformationTheoreticMeasuresFromMatrix(result.fusedWeightedAB.lightScope).normalizedMutualInformationJoint;
+		nmiJointBA = computeInformationTheoreticMeasuresFromMatrix(result.fusedWeightedBA.lightScope).normalizedMutualInformationJoint;
+	}
+	else
+	{
+		nmiJointAB = computeInformationTheoreticMeasuresFromMatrix(result.weightedAB.lightScope).normalizedMutualInformationJoint;
+		nmiJointBA = computeInformationTheoreticMeasuresFromMatrix(result.weightedBA.lightScope).normalizedMutualInformationJoint;
+	}
+	const double unifiedUndirectionalEmbeddingScore = (2.0 * nmiJointAB * nmiJointBA) / (nmiJointAB + nmiJointBA);
+	writefln("UUE: %.3f", unifiedUndirectionalEmbeddingScore);
 }
 
 void processByFilename(alias method, T)(string filename, FileFormat format, ref T processor)

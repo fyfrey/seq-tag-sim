@@ -40,7 +40,7 @@ struct Vocabulary
     {
         if (tokenCount == 0)
         {
-            tags = makeArray!ubyte(Mallocator.instance, initialSize);
+            tags = makeArray!uint(Mallocator.instance, initialSize);
             tokens = makeArray!string(Mallocator.instance, initialSize);
         }
         foreach (string word, string tag; range)
@@ -50,7 +50,7 @@ struct Vocabulary
                 l = labels.put(copy(tag), Label(labelCount++, 0));
             l.count++;
             tokens[tokenCount] = copy(word);
-            tags[tokenCount++] = cast(ubyte) l.id;
+            tags[tokenCount++] = l.id;
             if (tokens.length == tokenCount)
             {
                 expandArray(Mallocator.instance, tokens, tokens.length);
@@ -75,7 +75,7 @@ struct Vocabulary
         }
 
         immutable positions = tagList.length + 1;
-        foreach (string word, ubyte tag; lockstep(tokens, tags))
+        foreach (string word, uint tag; lockstep(tokens, tags))
         {
             uint[]* fields = word in vocab;
             if (fields is null)
@@ -99,8 +99,8 @@ struct Vocabulary
      *     other = other Vocabulary
      *     matchViaEmbedding = optional callback perform word matching via embedding if no direct match exists
      */
-    auto compare(bool useEmbedding = false, V : Vocabulary)(ref V other, bool delegate(ref V, const size_t, ref uint[]*,
-            ref double) matchViaEmbedding = null)
+    auto compare(bool useEmbedding = false, V:
+            Vocabulary)(ref V other, bool delegate(ref V, const size_t, ref uint[]*, ref double) matchViaEmbedding = null)
     {
 
         auto matrix = rcslice!double([tagList.length, other.tagList.length].staticArray, double.epsilon);
@@ -112,8 +112,7 @@ struct Vocabulary
         auto ilfMatrix = rcslice!double([tagList.length, other.tagList.length].staticArray, double.epsilon);
         auto ilfWeightedMatrix = rcslice!double([tagList.length, other.tagList.length].staticArray, double.epsilon);
         auto ilfAdditiveMatrix = rcslice!double([tagList.length, other.tagList.length].staticArray, double.epsilon);
-        auto ilfWeightedAdditiveMatrix = rcslice!double([tagList.length, other.tagList.length].staticArray, double
-                .epsilon);
+        auto ilfWeightedAdditiveMatrix = rcslice!double([tagList.length, other.tagList.length].staticArray, double.epsilon);
 
         Progress progress = Progress(vocab.length);
 
@@ -125,6 +124,7 @@ struct Vocabulary
 
             Atomic!ulong sharedVocabsCount;
             Atomic!ulong sharedWordsCountThis;
+            Atomic!ulong sharedWordsCountOther;
             alias add = addAtomic;
             auto buf = allocator.makeArray!(Tuple!(string, uint[]))(vocab.length);
             const remaining = copy(vocab.byPair, buf);
@@ -135,6 +135,7 @@ struct Vocabulary
         {
             ulong sharedVocabsCount;
             ulong sharedWordsCountThis;
+            ulong sharedWordsCountOther;
             alias add = addPlain;
             auto list = enumerate(vocab.byPair);
         }
@@ -150,6 +151,7 @@ struct Vocabulary
             {
                 sharedVocabsCount += 1;
                 sharedWordsCountThis += values[0];
+                sharedWordsCountOther += (*o)[0];
             }
             else static if (!useEmbedding)
                 continue;
@@ -178,17 +180,41 @@ struct Vocabulary
                     }
                 }
         }
-        stderr.writeln("Filling matrix counts ms: ", progress.peek.total!"msecs");
+        stderr.writeln("Filling matrix counts took ", progress.peek.total!"msecs", " ms");
 
         double sharedVocabularyFractionThis = sharedVocabsCount / cast(double) vocab.length;
         double sharedWordFractionThis = sharedWordsCountThis / cast(double) tokenCount;
+        writefln!"Tokens A: %s / shared: %.3f"(tokenCount, sharedWordFractionThis);
+        writefln!"Words A: %s / shared: %.3f"(vocab.length, sharedVocabularyFractionThis);
 
-        writefln!"Tokens: %s / shared: %.3f"(tokenCount, sharedWordFractionThis);
-        writefln!"Words: %s / shared: %.3f"(vocab.length, sharedVocabularyFractionThis);
+        double sharedVocabularyFractionOther = sharedVocabsCount / cast(double) other.vocab.length;
+        double sharedWordFractionOther = sharedWordsCountOther / cast(double) other.tokenCount;
+        writefln!"Tokens B: %s / shared: %.3f"(other.tokenCount, sharedWordFractionOther);
+        writefln!"Words B: %s / shared: %.3f"(other.vocab.length, sharedVocabularyFractionOther);
 
-        return tuple!("mul", "mulIwf", "mulIlf", "mulIwfIlf", "add", "addIwf", "addIlf", "addIwfIlf")(matrix,
-                weightedMatrix, ilfMatrix,
-                ilfWeightedMatrix, additiveMatrix, weightedAdditiveMatrix, ilfAdditiveMatrix, ilfWeightedAdditiveMatrix);
+        immutable ulong allTokensCount = tokenCount + other.tokenCount;
+        ulong allWordsCount = vocab.length;
+        ulong sharedTokensCount, sharedWordsCount;
+
+        foreach (const string word, const uint[] counts; vocab.byPair)
+        {
+            const uint[]* otherCounts = word in other.vocab;
+            if (otherCounts)
+            {
+                sharedTokensCount += (*otherCounts)[0] + counts[0];
+                sharedWordsCount++;
+            }
+        }
+        foreach (const string word, const uint[] counts; other.vocab.byPair)
+            allWordsCount += word !in vocab;
+
+        double sharedTokensFraction = sharedTokensCount / cast(double) allTokensCount;
+        double sharedVocabularyFraction = sharedWordsCount / cast(double) allWordsCount;
+
+        return tuple!("mul", "mulIwf", "mulIlf", "mulIwfIlf", "add", "addIwf", "addIlf", "addIwfIlf", "sharedTokens", "sharedVocabulary")(
+                matrix, weightedMatrix, ilfMatrix, ilfWeightedMatrix,
+                additiveMatrix, weightedAdditiveMatrix,
+                ilfAdditiveMatrix, ilfWeightedAdditiveMatrix, sharedTokensFraction, sharedVocabularyFraction);
     }
 
 private:
@@ -197,7 +223,7 @@ private:
     HashMap!(string, uint[], Mallocator, false) vocab;
     typeof(mmapRegionList(0)) allocator = mmapRegionList(4 * 1024 * 1024);
     string[] tagList;
-    ubyte[] tags;
+    uint[] tags;
     string[] tokens;
     uint[] labelCounts;
     uint labelCount = 1;
@@ -235,6 +261,9 @@ version (embedding)
     {
         mixin base;
 
+        /**
+         * Creates a new instance with the given embeddings.
+         */
         this(ref Embedding emb, float similarityThreshold = 0.0f)
         {
             this.emb = &emb;

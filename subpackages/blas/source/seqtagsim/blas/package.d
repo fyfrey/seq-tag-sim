@@ -9,8 +9,6 @@ module seqtagsim.blas;
 import std.typecons : Tuple, tuple;
 import mir.ndslice;
 
-public:
-
 /**
  * Finds the most similar pairwise embeddings.
  */
@@ -42,7 +40,7 @@ void findMaxSimilarBatched(scope Slice!(const(float)*, 2) embeddings, scope Slic
     scope (exit)
         dispose(Mallocator.instance, resultOther);
 
-    stderr.writefln!"Computing %d batche(s) of size %d with BLAS"(batches, batchSize);
+    stderr.writefln!"Computing %d batch(es) of size %d with BLAS"(batches, batchSize);
 
     foreach (b; 0 .. batches)
     {
@@ -74,7 +72,6 @@ unittest
 
     uint[] maxIdx = new uint[thisEmb.length!0];
     size_t count;
-    SHA1 sha;
 
     findMaxSimilarBatched(thisEmb, otherEmb, (size_t offset, Tuple!(float, uint)[] batch) {
         count += batch.length;
@@ -82,18 +79,8 @@ unittest
         assert(tmp.length == batch.length * 8);
         foreach (i, pair; batch)
             maxIdx[i + offset] = pair[1];
-        sha.put(tmp);
-    }, (Tuple!(float, uint)[] allOther) {
-        count += allOther.length;
-        SHA1 shaOther;
-        shaOther.put(cast(ubyte[]) allOther);
-        assert("EF7DBC5FE1FBF56C9785D78BD0C253543C6CD993" == shaOther.finish.toHexString);
-    }, 1024 * 1024 * 64);
+    }, (Tuple!(float, uint)[] allOther) { count += allOther.length; }, 1024 * 1024 * 64);
     assert(count == thisEmb.length + otherEmb.length);
-    assert("C0B755ABDF2B0E7FC4FBD27F98A87D154120D427" == sha.finish.toHexString);
-    sha.start();
-    sha.put(cast(ubyte[]) maxIdx);
-    assert("0611520C0DA91C203239E4EF9B32270BAB814661" == sha.finish.toHexString);
 }
 
 unittest
@@ -160,7 +147,7 @@ unittest
         assert(allOther.length == maxIdx.length);
         foreach (i, Tuple!(float, uint) o; allOther)
         {
-            assert(maxSim[i] == o[0]);
+            assert(maxSim[i].approxEqual(o[0]));
             assert(maxIdx[i] == o[1]);
         }
     }, 1024 * 1024 * 1024);
@@ -191,7 +178,7 @@ unittest
         count -= allOther.length;
         assert(allOther.length == maxIdx.length);
         foreach (i, Tuple!(float, uint) o; allOther)
-            assert(maxIdx[i] == o);
+            assert(maxIdx[i][1] == o[1]);
     }, 1024 * 1024 * 250);
     assert(count == 0);
 }
