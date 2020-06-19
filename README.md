@@ -4,10 +4,9 @@ This program computes the similarity of two annotated sequence tagging datasets 
 The designated use case is to ease and speed up the tedious process of selecting suitable auxiliary training data for neural networks using multi-task learning to augment the primary training with auxiliary data.
 Knowing the similarity between the training dataset and different auxiliary datasets quickly allows selecting the most similar dataset, which should also provide the most improvement of the neural network's performance on the main task.
 
-The program computes multiple similarity measures at once. 
 There are no restrictions on the tagsets used in the datasets.
-Arbitrary sequence tagging task / datasets can be compared.
-As of now, the similarity computation is only working well for tasks where each token is tagged individually, e.g. part-of-speech (POS) tagging, or the grouped tokens are short, e.g. named entity recognition (NER).
+Arbitrary sequence tagging tasks / datasets can be compared.
+As of now, the similarity computation has primarily been tested on tasks where each token is tagged individually, e.g. part-of-speech (POS) tagging, or the grouped tokens are short, e.g. named entity recognition (NER).
 
 ## Installation
 
@@ -20,11 +19,23 @@ Alternatively, call the program via its absolute or relative path.
 Run `seq-tag-sim -h` to print the commandline help.
 The general usage is straightforward.
 Run `seq-tag-sim path/to/dataset1 path/to/dataset2` to compare dataset 1 with dataset 2 and compute various similarity measures, which are written to the standard output stream.
-In case the automatic data format selection (based on file types) fails, use the `-f` option once or twice to manually select the input format.
+In case the automatic data format selection (based on filename extensions) fails, use the `-f` option once or twice to manually select the input format.
 If your datasets are split across multiple files, use shell glob operations to select the files.
-It is now necessary to distinguish both datasets by placing an `--` in between the to datasets.
+It is now necessary to distinguish both datasets by placing an `--` in between the two datasets.
 The example `seq-tag-sim -f bncPOS -f ptbPOS path/to/dataset1/*.xml -- path/to/dataset2/*.pos` shows how to compare multiple XML files from the British National Corpus with some files in the Penn Treebank POS tagging format. 
-Windows users can use the `--pattern` option to select files with glob-like selectors.
+
+## Citation
+
+If you use the software for your research, please cite our paper describing the developed methods:
+```
+@inproceedings{schröder-biemann-2020-estimating,
+    title = "Estimating the influence of auxiliary tasks for multi-task learning of sequence tagging tasks",
+    author = "Schröder, Fynn and Biemann, Chris",
+    booktitle = "Proceedings of the 58th Annual Meeting of the Association for Computational Linguistics",
+    year = "2020",
+    publisher = "Association for Computational Linguistics"
+}
+```
 
 ## Advanced installation and usage
 
@@ -33,13 +44,13 @@ To use advanced features, additional software and data may be required.
 Depending on the type of embedding to be used
 * download a [fastText](https://fasttext.cc/) model
 * install [AllenNLP](https://github.com/allenai/allennlp) in your active Python environment to use contextual [ELMo](https://allennlp.org/elmo) embeddings
-* install [bert-as-a-service](https://github.com/hanxiao/bert-as-service) in your active Python environment, download a suitable model and start the service to use contextual [BERT](https://github.com/google-research/bert) embeddings.
+* install [bert-as-service](https://github.com/hanxiao/bert-as-service) in your active Python environment, download a suitable model and start the service to use contextual [BERT](https://github.com/google-research/bert) embeddings.
 
 To use non-contextual word embeddings, i.e. fastText, supply the `-e path/to/embedding.bin` option when running the program.
 As the fastText library takes some time to load the model, this may add considerable run time overhead when comparing small datasets.
 The preferred option, is to use BERT embeddings.
 To do so, run `seq-tag-sim -c bert`.
-If the `bert-as-a-serice` server is not running on the same computer, use the `-e` option to set the server's network address.
+If the `bert-as-serice` server is not running on the same computer, use the `-e` option to set the server's network address.
 
 ## Functioning principle
 
@@ -67,7 +78,7 @@ File readers for various common sequence tagging file formats can be found in th
 As its name suggests, the `util` subpackage contains utility functions and structures.
 The remaining subpackages are all related to the option word embeddings.
 The `blas` subpackage contains an efficient functionality to compute the most similar vector pairs between two huge arrays of vectors. It uses a batched matrix multiplication implementation, which can efficiently multiply matrices that do not fit into memory. Along with the computation of these batches, the maximal similar vectors are found.
-An API-wise identical implementation for CUDA exists in the `cuda` subpackage. It can optionally divide the computation up across multiple GPUs, which decreases the run time for large datasets of 200000 tokens or more.
+An API-wise identical implementation for CUDA exists in the `cuda` subpackage. It can optionally divide the computation up across multiple GPUs, which decreases the run time for large datasets of millions of tokens or more.
 The `embedding` subpackage contains structures and functions to use the three different embeddings libraries resp. services with a uniform API.
 The `fasttext` subpackage is home to the external fasttext source code and some custom wrapper code to make the usage as a library instead of commandline program possible.
 
@@ -75,7 +86,7 @@ The `fasttext` subpackage is home to the external fasttext source code and some 
 
 Builder the program from source should be possible on any most current POSIX-like systems (e.g. Linux, FreeBSD, MacOS) and Windows.
 To build the software from source, first clone this repository.
-A recent [D language](https://dlang.org) compiler needs to be installed, e.g. [DMD](https://dlang.org/download.html#dmd) (version 2.086.1 or higher) or [LDC](https://github.com/ldc-developers/ldc#installation) (tested with version 1.16.0 and higher).
+A [D language](https://dlang.org) compiler needs to be installed, e.g. [DMD](https://dlang.org/download.html#dmd) (tested with version 2.091.1) or [LDC](https://github.com/ldc-developers/ldc#installation) (tested with version 1.21.0 and 1.22.0).
 If the D compiler installation does not include [DUB](https://dub.pm/getting_started) (the D package manager), downloading and installing DUB separately is necessary.
 Further, the system's default compiler C/C++ compiler (e.g. gcc or clang) and linker has to be installed.
 Building the basic version of the program without support for word embeddings is straightforward: Run `dub build -b release` to produce the `seq-tag-sim` binary.
@@ -97,7 +108,7 @@ After sourcing the environment variables by running `~/intel/bin/compilervars.sh
 To run the main unit tests, call `dub test`.
 This does not include the tests of the subpackages.
 You can run these individually by calling `dub test :subPackageName` like `dub test :util`.
-To run all unit tests invoke `runTests.sh`.
+To run all unit tests invoke `runTests.sh`. Some tests require a CUDA environment and running `bert-as-service` server. 
 
 ## Contributing
 
